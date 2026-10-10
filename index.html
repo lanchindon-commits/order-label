@@ -97,18 +97,21 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <h2>3．標籤預覽</h2>
       <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
       <div class="row">
-        <button class="primary" id="btnShare">分享到標籤 App</button>
+        <button class="primary" id="btnBle">藍牙直接列印</button>
+        <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">手機：按「分享到標籤 App」→ 選 P1 的 App → 匯入圖片列印。<br>
-      也可以長按預覽圖 →「儲存圖片」，再到 App 裡從相簿選圖。</p>
+      <p class="hint">Android 手機 / 電腦用 Chrome：按「藍牙直接列印」，第一次會跳出選擇印表機，選 P1 即可（之後同一頁不用再選）。<br>
+      iPhone 不支援網頁藍牙：請按「分享到標籤 App」選微打，或長按預覽圖 →「儲存圖片」再到微打從相簿選圖。</p>
     </section>
   </div>
 </div>
 
 <canvas id="cv" hidden></canvas>
+<!-- 德佟 LPAPI：瀏覽器藍牙(BLE)/USB 直接列印 -->
+<script src="https://cdn.jsdelivr.net/npm/lpapi-ble@1.7.260618/libs/index.umd.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const DPMM = 16;            // 每 mm 像素（203dpi 的 2 倍，縮放後依然清晰）
@@ -200,6 +203,31 @@ function draw(){
 
 function fileName(){ return "訂貨_" + ($("fPlate").value||"label").replace(/[^\w-]/g,"") + ".png"; }
 function out(t,ok){ const e=$("outMsg"); e.className="msg"+(ok?" ok":""); e.textContent=t; }
+
+// ── 藍牙直接列印（德佟 LPAPI） ──
+let lp = null;
+$("btnBle").onclick = async ()=>{
+  if (!window.LPAPI || !LPAPI.LPAPI){ out("列印元件載入失敗，請確認網路後重新整理。"); return; }
+  if (!navigator.bluetooth){ out("這個瀏覽器不支援網頁藍牙（iPhone 不支援），請改用「分享到標籤 App」。"); return; }
+  const btn=$("btnBle"); btn.disabled=true;
+  try{
+    lp = lp || LPAPI.LPAPI.getInstance();
+    if (!lp.isPrinterOpened()){
+      out("請在跳出的視窗選擇 P1 印表機…",true);
+      const req = await lp.requestDevice();
+      const dev = req && req.resultInfo && req.resultInfo[0];
+      if (!dev){ out("沒有選到印表機。請確認 P1 已開機、手機藍牙已開啟。"); return; }
+      const op = await lp.openPrinter({deviceId:dev.deviceId, name:dev.name, tryTimes:3});
+      if (op.statusCode!==0){ out("連線失敗（"+(op.errMsg||op.codeName||op.statusCode)+"），請把 P1 重新開機再試。"); return; }
+    }
+    out("列印中…",true);
+    const [mw,mh] = $("fSize").value.split("x").map(Number);
+    const res = await lp.printImage({image:$("labelImg"), width:mw, height:mh});
+    const code = res && (res.statusCode ?? res.resultCode ?? 0);
+    out(code===0 ? "已送出列印 ✓" : "列印失敗（代碼 "+code+"），請檢查紙張或蓋子。", code===0);
+  }catch(e){ out("列印出錯："+(e.message||e)); }
+  finally{ btn.disabled=false; }
+};
 
 // ── 輸出 ──
 $("btnShare").onclick = async ()=>{
