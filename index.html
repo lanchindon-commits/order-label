@@ -55,12 +55,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
   <div class="grid">
     <section class="panel">
       <h2>1．貼上 LINE 訊息</h2>
-      <textarea id="src">ASON
+      <textarea id="src" autofocus placeholder="把 LINE 訂貨訊息貼在這裡，標籤會自動產生
+
+例如：
 您好，我是技師(中寶)
 您的愛車:868-KCB
 材料 (副廠排氣管)
-價錢 ($1800)
-已經幫您預訂，貨到通知您，感謝</textarea>
+價錢 ($1800)"></textarea>
       <div class="row">
         <button class="primary" id="btnParse">解析訊息</button>
         <button id="btnPaste">從剪貼簿貼上</button>
@@ -141,6 +142,7 @@ function parseMsg(t){
 }
 
 function fillFromMsg(){
+  if (!$("src").value.trim()){ $("parseMsg").textContent=""; return; }
   const r = parseMsg($("src").value);
   $("fTech").value = r.tech; $("fPlate").value = r.plate; $("fPart").value = r.part;
   $("fPrice").value = r.price; $("fName").value = r.name;
@@ -301,7 +303,7 @@ try{ const s=localStorage.getItem("labelSize"); if(s) $("fSize").value=s; }catch
 $("fSize").addEventListener("change",()=>{ try{localStorage.setItem("labelSize",$("fSize").value);}catch(e){} });
 
 $("fDate").value = today();
-(document.fonts ? document.fonts.load('900 40px "Noto Sans TC"').catch(()=>{}) : Promise.resolve()).then(fillFromMsg);
+(document.fonts ? document.fonts.load('900 40px "Noto Sans TC"').catch(()=>{}) : Promise.resolve()).then(()=>{ draw(); $("src").focus(); });
 </script>
 </body>
 </html>
