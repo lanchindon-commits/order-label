@@ -98,12 +98,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
       <div class="row">
         <button class="primary" id="btnBle">藍牙直接列印</button>
+        <button id="btnUsb">USB 列印（電腦）</button>
         <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">Android 手機 / 電腦用 Chrome：按「藍牙直接列印」，第一次會跳出選擇印表機，選 P1 即可（之後同一頁不用再選）。<br>
+      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦用 USB 線接 P1：按「USB 列印（電腦）」。<br>
       iPhone 不支援網頁藍牙：請按「分享到標籤 App」選微打，或長按預覽圖 →「儲存圖片」再到微打從相簿選圖。</p>
     </section>
   </div>
@@ -204,30 +205,36 @@ function draw(){
 function fileName(){ return "訂貨_" + ($("fPlate").value||"label").replace(/[^\w-]/g,"") + ".png"; }
 function out(t,ok){ const e=$("outMsg"); e.className="msg"+(ok?" ok":""); e.textContent=t; }
 
-// ── 藍牙直接列印（德佟 LPAPI） ──
+// ── 直接列印（德佟 LPAPI：藍牙 BLE / USB） ──
 let lp = null;
-$("btnBle").onclick = async ()=>{
+function env(){ return (navigator.userAgent.match(/Line\//)?"LINE內建瀏覽器 ":"") + (navigator.bluetooth?"支援藍牙 ":"不支援藍牙 ") + (navigator.hid?"支援USB":"不支援USB"); }
+async function directPrint(mode, btn){
   if (!window.LPAPI || !LPAPI.LPAPI){ out("列印元件載入失敗，請確認網路後重新整理。"); return; }
-  if (!navigator.bluetooth){ out("這個瀏覽器不支援網頁藍牙（iPhone 不支援），請改用「分享到標籤 App」。"); return; }
-  const btn=$("btnBle"); btn.disabled=true;
+  if (/Line\//.test(navigator.userAgent)){ out("請不要在 LINE 裡開，請用 Chrome 打開這個網址。"); return; }
+  if (mode==="ble" && !navigator.bluetooth){ out("這個瀏覽器不能用網頁藍牙（"+env()+"）。Android 請用 Chrome；iPhone 請改用「分享到標籤 App」。"); return; }
+  if (mode==="usb" && !navigator.hid){ out("這個瀏覽器不能用 USB 列印（"+env()+"），請用電腦版 Chrome 或 Edge。"); return; }
+  btn.disabled=true;
   try{
     lp = lp || LPAPI.LPAPI.getInstance();
     if (!lp.isPrinterOpened()){
-      out("請在跳出的視窗選擇 P1 印表機…",true);
-      const req = await lp.requestDevice();
+      out(mode==="ble" ? "請在跳出的視窗選擇 P1（名稱可能是 P1、DT 或 DP 開頭）…" : "請在跳出的視窗選擇 USB 印表機…", true);
+      const opt = mode==="ble" ? {webBLE:true, bleFilters:"*"} : {webHID:true};
+      const req = await lp.requestDevice(opt);
       const dev = req && req.resultInfo && req.resultInfo[0];
-      if (!dev){ out("沒有選到印表機。請確認 P1 已開機、手機藍牙已開啟。"); return; }
-      const op = await lp.openPrinter({deviceId:dev.deviceId, name:dev.name, tryTimes:3});
-      if (op.statusCode!==0){ out("連線失敗（"+(op.errMsg||op.codeName||op.statusCode)+"），請把 P1 重新開機再試。"); return; }
-    }
-    out("列印中…",true);
+      if (!dev){ out("沒有選到印表機（"+(req&&(req.errMsg||req.codeName||req.statusCode))+"｜"+env()+"）。"); return; }
+      const op = await lp.openPrinter(Object.assign({deviceId:dev.deviceId, name:dev.name, tryTimes:3}, opt));
+      if (op.statusCode!==0){ out("連線 "+dev.name+" 失敗（"+(op.errMsg||op.codeName||op.statusCode)+"），請把 P1 重新開機再試。"); return; }
+      out("已連線 "+dev.name+"，列印中…",true);
+    } else out("列印中…",true);
     const [mw,mh] = $("fSize").value.split("x").map(Number);
     const res = await lp.printImage({image:$("labelImg"), width:mw, height:mh});
-    const code = res && (res.statusCode ?? res.resultCode ?? 0);
-    out(code===0 ? "已送出列印 ✓" : "列印失敗（代碼 "+code+"），請檢查紙張或蓋子。", code===0);
-  }catch(e){ out("列印出錯："+(e.message||e)); }
+    const code = res ? (res.statusCode ?? 0) : 0;
+    out(code===0 ? "已送出列印 ✓" : "列印失敗（"+(res.errMsg||res.codeName||code)+"），請檢查紙張或蓋子。", code===0);
+  }catch(e){ out("列印出錯："+(e.message||e)+"（"+env()+"）"); }
   finally{ btn.disabled=false; }
-};
+}
+$("btnBle").onclick = e=>directPrint("ble", e.currentTarget);
+$("btnUsb").onclick = e=>directPrint("usb", e.currentTarget);
 
 // ── 輸出 ──
 $("btnShare").onclick = async ()=>{
