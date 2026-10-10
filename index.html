@@ -165,24 +165,30 @@ function fillFromMsg(){
 // ── 畫標籤 ──
 function wrapText(ctx, text, maxW){
   const out=[]; let cur="";
-  for (const ch of text){ if (ctx.measureText(cur+ch).width > maxW && cur){ out.push(cur); cur=ch; } else cur+=ch; }
+  const noStart = "、，。,.)）：:；;！!？?」』%";
+  for (const ch of text){
+    if (ctx.measureText(cur+ch).width > maxW && cur && !noStart.includes(ch)){ out.push(cur); cur = ch===" " ? "" : ch; }
+    else cur+=ch;
+  }
   if (cur) out.push(cur); return out.length?out:[""];
 }
 
-function layout(ctx, W, H, fs, rows){
+function layout(ctx, W, H, fs, rows, pfs){
   const pad = Math.round(W*0.05), maxW = W - pad*2;
   const ops=[]; let y = pad, broke=false;
   for (const r of rows){
-    let size = fs * (r.scale||1);
+    const base = r.part ? (pfs||fs) : fs;
+    let size = base * (r.scale||1);
     const F = z => `900 ${z}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
     ctx.font = F(size);
     // 單行欄位放不下時，只縮這一行，不拖累整張標籤
     if (r.nowrap){
       const txt = (r.label||"") + (r.value||"");
-      while (ctx.measureText(txt).width > maxW && size > fs){ size -= 1; ctx.font = F(size); }
+      const minSize = (r.scale||1) > 1 ? base : base*0.75;  // 車牌最小跟其他行一樣大；一般欄位太長可單獨縮到 75%
+      while (ctx.measureText(txt).width > maxW && size > minSize){ size -= 1; ctx.font = F(size); }
       if (ctx.measureText(txt).width > maxW) broke = true;
     }
-    const lh = Math.max(size, fs)*1.22;
+    const lh = Math.max(size, base)*1.22;
     if (r.label && r.inline){
       const lw = ctx.measureText(r.label).width;
       const vlines = wrapText(ctx, r.value, maxW - lw);
@@ -213,16 +219,25 @@ function draw(){
   if (mw < mh){  // 直式標籤：車牌、材料另起一行，跟原本手寫標籤一樣
     rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.2,nowrap:true});
     rows.push({label:"材料名稱："});
-    rows.push({value:$("fPart").value.trim()});
+    rows.push({value:$("fPart").value.trim(),part:true});
   } else {
     rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.25,nowrap:true});
-    rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true});
+    rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true,part:true});
   }
   rows.push({label:"價錢：",value:price ? "$"+price : "",inline:true,nowrap:true});
 
   // 從大字開始縮，直到塞得進標籤
-  let fs = Math.round(H/4), res;
-  do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while ((res.h > H || res.broke) && fs > 10);
+  // 1) 整體字級從大往下縮，但欄位字不低於 FLOOR（約 2.8mm，熱感紙還看得清楚）
+  // 2) 還放不下 → 只縮「材料名稱」內容
+  // 3) 真的太長 → 全部一起再縮
+  const bad = r => r.h > H || r.broke;
+  const FLOOR = Math.round(H/11), PMIN = Math.round(H/24);
+  let fs = Math.round(H/4), pfs, res = layout(ctx,W,H,fs,rows,fs);
+  // 欄位本身寬度放不下（broke）時一定要繼續縮；只有高度不夠時才停在 FLOOR，改縮材料
+  while (bad(res) && (fs > FLOOR || res.broke) && fs > 12){ fs -= 1; res = layout(ctx,W,H,fs,rows,fs); }
+  pfs = fs;
+  while (bad(res) && pfs > PMIN){ pfs -= 1; res = layout(ctx,W,H,fs,rows,pfs); }
+  while (bad(res) && fs > 12){ fs -= 1; pfs = Math.min(pfs, fs); res = layout(ctx,W,H,fs,rows,pfs); }
   // 多出來的高度平均分配到行距，標籤不會下面空一大塊
   const ys = [...new Set(res.ops.map(o=>o.y))].sort((a,b)=>a-b);
   const gap = ys.length>1 ? Math.min(Math.max(0, H - res.h) / (ys.length-1), fs*0.6) : 0;
