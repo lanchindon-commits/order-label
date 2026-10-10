@@ -78,6 +78,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <label>客人名稱<input id="fName"></label>
         <label>標籤尺寸
           <select id="fSize">
+            <option value="30x40">30 × 40 mm（直式）</option>
             <option value="40x30">40 × 30 mm</option>
             <option value="50x30">50 × 30 mm</option>
             <option value="50x40">50 × 40 mm</option>
@@ -89,8 +90,8 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <label class="check"><input type="checkbox" id="fShowName">標籤上印客人名稱</label>
         <label class="check">列印方向
           <select id="fRotate" style="width:auto">
-            <option value="90">旋轉 90°（跟微打範本一樣，最清楚）</option>
             <option value="0">不旋轉</option>
+            <option value="90">旋轉 90°</option>
           </select>
         </label>
       </div>
@@ -128,7 +129,7 @@ const $ = id => document.getElementById(id);
 const DPMM = 16;            // 每 mm 像素（203dpi 的 2 倍，縮放後依然清晰）
 let lastBlob = null;
 
-function today(){ const d=new Date(); return (d.getMonth()+1)+" / "+d.getDate(); }
+function today(){ const d=new Date(); return (d.getMonth()+1)+"/"+d.getDate(); }
 
 // ── 解析 LINE 訊息 ──
 function parseMsg(t){
@@ -170,7 +171,7 @@ function wrapText(ctx, text, maxW){
 
 function layout(ctx, W, H, fs, rows){
   const pad = Math.round(W*0.05), maxW = W - pad*2;
-  const ops=[]; let y = pad;
+  const ops=[]; let y = pad, broke=false;
   for (const r of rows){
     const size = fs * (r.scale||1);
     ctx.font = `900 ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
@@ -178,12 +179,15 @@ function layout(ctx, W, H, fs, rows){
     if (r.label && r.inline){
       const lw = ctx.measureText(r.label).width;
       const vlines = wrapText(ctx, r.value, maxW - lw);
+      if (r.nowrap && vlines.length>1) broke=true;
       vlines.forEach((v,i)=>{ ops.push({font:ctx.font,x:pad,y,t:i?"":r.label}); ops.push({font:ctx.font,x:pad+lw,y,t:v}); y+=lh; });
     } else {
-      wrapText(ctx, (r.label||"") + (r.value||""), maxW).forEach(v=>{ ops.push({font:ctx.font,x:pad,y,t:v}); y+=lh; });
+      const lines = wrapText(ctx, (r.label||"") + (r.value||""), maxW);
+      if (r.nowrap && lines.length>1) broke=true;
+      lines.forEach(v=>{ ops.push({font:ctx.font,x:pad,y,t:v}); y+=lh; });
     }
   }
-  return {ops, h:y+pad};
+  return {ops, h:y+pad, broke};
 }
 
 function draw(){
@@ -197,15 +201,22 @@ function draw(){
   const price = $("fPrice").value.trim();
   const rows = [];
   if ($("fShowName").checked && $("fName").value.trim()) rows.push({label:"客人：",value:$("fName").value.trim(),inline:true});
-  rows.push({label:"預定日期：",value:$("fDate").value.trim(),inline:true});
-  rows.push({label:"定料技師：",value:$("fTech").value.trim(),inline:true});
-  rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.25});
-  rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true});
-  rows.push({label:"價錢：",value:price ? "$"+price : "",inline:true});
+  rows.push({label:"預定日期：",value:$("fDate").value.trim(),inline:true,nowrap:true});
+  rows.push({label:"定料技師：",value:$("fTech").value.trim(),inline:true,nowrap:true});
+  if (mw < mh){  // 直式標籤：車牌、材料另起一行，跟原本手寫標籤一樣
+    rows.push({label:"車牌："});
+    rows.push({value:$("fPlate").value.trim(),bold:true,scale:1.35,nowrap:true});
+    rows.push({label:"材料名稱："});
+    rows.push({value:$("fPart").value.trim()});
+  } else {
+    rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.25,nowrap:true});
+    rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true});
+  }
+  rows.push({label:"價錢：",value:price ? "$"+price : "",inline:true,nowrap:true});
 
   // 從大字開始縮，直到塞得進標籤
   let fs = Math.round(H/4), res;
-  do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while (res.h > H && fs > 10);
+  do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while ((res.h > H || res.broke) && fs > 10);
   for (const o of res.ops){ ctx.font=o.font; ctx.fillText(o.t,o.x,o.y); }
 
   // 預覽：給人看的正向圖
@@ -326,12 +337,12 @@ $("src").addEventListener("focus", e=>e.target.select());
 $("src").addEventListener("paste", ()=>{ $("fDate").value = today(); setTimeout(fillFromMsg,0); });
 ["fDate","fTech","fPlate","fPrice","fPart","fName"].forEach(id=>$(id).addEventListener("input",draw));
 ["fSize","fShowName","fRotate"].forEach(id=>$(id).addEventListener("change",draw));
-try{ const r=localStorage.getItem("labelRotate"); if(r) $("fRotate").value=r; }catch(e){}
-$("fRotate").addEventListener("change",()=>{ try{localStorage.setItem("labelRotate",$("fRotate").value);}catch(e){} });
+try{ const r=localStorage.getItem("labelRotate2"); if(r) $("fRotate").value=r; }catch(e){}
+$("fRotate").addEventListener("change",()=>{ try{localStorage.setItem("labelRotate2",$("fRotate").value);}catch(e){} });
 
 // 記住上次選的尺寸
-try{ const s=localStorage.getItem("labelSize"); if(s) $("fSize").value=s; }catch(e){}
-$("fSize").addEventListener("change",()=>{ try{localStorage.setItem("labelSize",$("fSize").value);}catch(e){} });
+try{ const s=localStorage.getItem("labelSize2"); if(s) $("fSize").value=s; }catch(e){}
+$("fSize").addEventListener("change",()=>{ try{localStorage.setItem("labelSize2",$("fSize").value);}catch(e){} });
 
 $("fDate").value = today();
 (document.fonts ? document.fonts.load('900 40px "Noto Sans TC"').catch(()=>{}) : Promise.resolve()).then(()=>{ draw(); $("src").focus(); });
