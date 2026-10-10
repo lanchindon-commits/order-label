@@ -87,6 +87,12 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       </div>
       <div class="row">
         <label class="check"><input type="checkbox" id="fShowName">標籤上印客人名稱</label>
+        <label class="check">列印方向
+          <select id="fRotate" style="width:auto">
+            <option value="90">旋轉 90°（跟微打範本一樣，最清楚）</option>
+            <option value="0">不旋轉</option>
+          </select>
+        </label>
       </div>
       <div class="row">
         <button id="btnMsg">反過來：用上面欄位產生 LINE 訊息並複製</button>
@@ -112,6 +118,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 </div>
 
 <canvas id="cv" hidden></canvas>
+<canvas id="pcv" hidden></canvas>
 <!-- 德佟 LPAPI：瀏覽器藍牙(BLE)/USB 直接列印 -->
 <script src="https://cdn.jsdelivr.net/npm/lpapi-ble@1.7.260618/libs/index.umd.js"></script>
 <!-- 德佟 dtpweb：電腦端打印助手（127.0.0.1） -->
@@ -166,7 +173,7 @@ function layout(ctx, W, H, fs, rows){
   const ops=[]; let y = pad;
   for (const r of rows){
     const size = fs * (r.scale||1);
-    ctx.font = `${r.bold?900:700} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+    ctx.font = `900 ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
     const lh = size*1.22;
     if (r.label && r.inline){
       const lw = ctx.measureText(r.label).width;
@@ -201,10 +208,32 @@ function draw(){
   do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while (res.h > H && fs > 10);
   for (const o of res.ops){ ctx.font=o.font; ctx.fillText(o.t,o.x,o.y); }
 
-  cv.toBlob(b=>{ lastBlob=b; const u=URL.createObjectURL(b); const img=$("labelImg");
-    if (img.dataset.u) URL.revokeObjectURL(img.dataset.u); img.dataset.u=u; img.src=u;
-    img.style.width = (mw*6.4)+"px"; }, "image/png");
+  // 預覽：給人看的正向圖
+  const img=$("labelImg"); img.src = cv.toDataURL("image/png"); img.style.width = (mw*6.4)+"px";
+  // 列印：轉 203dpi(8點/mm)、純黑白、依設定旋轉 90°
+  const pc = makePrintCanvas(cv, mw, mh);
+  pc.toBlob(b=>{ lastBlob=b; }, "image/png");
 }
+
+const PRINT_DPMM = 8;
+function rotateOn(){ return $("fRotate").value === "90"; }
+function makePrintCanvas(src, mw, mh){
+  const w = mw*PRINT_DPMM, h = mh*PRINT_DPMM, rot = rotateOn();
+  const pc = $("pcv"); pc.width = rot ? h : w; pc.height = rot ? w : h;
+  const c = pc.getContext("2d");
+  c.fillStyle="#fff"; c.fillRect(0,0,pc.width,pc.height);
+  c.imageSmoothingEnabled = true; c.imageSmoothingQuality = "high";
+  if (rot){ c.translate(h,0); c.rotate(Math.PI/2); }
+  c.drawImage(src, 0, 0, w, h);
+  c.setTransform(1,0,0,1,0,0);
+  // 灰階轉純黑白，避免熱感紙印出來淡淡糊糊
+  const d = c.getImageData(0,0,pc.width,pc.height), a = d.data;
+  for (let i=0;i<a.length;i+=4){ const v = (a[i]*0.3+a[i+1]*0.59+a[i+2]*0.11) < 170 ? 0 : 255; a[i]=a[i+1]=a[i+2]=v; a[i+3]=255; }
+  c.putImageData(d,0,0);
+  return pc;
+}
+function printSize(){ const [mw,mh] = $("fSize").value.split("x").map(Number); return rotateOn() ? [mh,mw] : [mw,mh]; }
+function printImageEl(){ return new Promise(r=>{ const im=new Image(); im.onload=()=>r(im); im.src=$("pcv").toDataURL("image/png"); }); }
 
 function fileName(){ return "訂貨_" + ($("fPlate").value||"label").replace(/[^\w-]/g,"") + ".png"; }
 function out(t,ok){ const e=$("outMsg"); e.className="msg"+(ok?" ok":""); e.textContent=t; }
@@ -230,8 +259,8 @@ async function directPrint(mode, btn){
       if (op.statusCode!==0){ out("連線 "+dev.name+" 失敗（"+(op.errMsg||op.codeName||op.statusCode)+"），請把 P1 重新開機再試。"); return; }
       out("已連線 "+dev.name+"，列印中…",true);
     } else out("列印中…",true);
-    const [mw,mh] = $("fSize").value.split("x").map(Number);
-    const res = await lp.printImage({image:$("labelImg"), width:mw, height:mh});
+    const [pw,ph] = printSize();
+    const res = await lp.printImage({image: await printImageEl(), width:pw, height:ph});
     const code = res ? (res.statusCode ?? 0) : 0;
     out(code===0 ? "已送出列印 ✓" : "列印失敗（"+(res.errMsg||res.codeName||code)+"），請檢查紙張或蓋子。", code===0);
   }catch(e){ out("列印出錯："+(e.message||e)+"（"+env()+"）"); }
@@ -255,8 +284,8 @@ $("btnPc").onclick = async e=>{
     const list = api.getPrinters({onlyLocal:true}) || [];
     if (!list.length){ out("打印助手已啟動，但沒找到印表機。請確認 P1 已開機並用 USB 接上電腦。"); return; }
     const pick = list.find(d=>/P1/i.test(d.name||d.deviceName)) || list[0];
-    const [mw,mh] = $("fSize").value.split("x").map(Number);
-    const ok = api.printImage({ data: $("cv").toDataURL("image/png"), printerName: pick.name, printWidth: mw, printHeight: mh });
+    const [pw,ph] = printSize();
+    const ok = api.printImage({ data: $("pcv").toDataURL("image/png"), printerName: pick.name, printWidth: pw, printHeight: ph });
     out(ok ? "已送到 "+pick.name+" ✓" : "送出失敗，請確認 "+pick.name+" 有紙、蓋子已蓋好。", !!ok);
   }catch(err){ out("電腦列印出錯："+(err.message||err)); }
   finally{ btn.disabled=false; }
@@ -296,7 +325,9 @@ $("btnParse").onclick = fillFromMsg;
 $("src").addEventListener("focus", e=>e.target.select());
 $("src").addEventListener("paste", ()=>{ $("fDate").value = today(); setTimeout(fillFromMsg,0); });
 ["fDate","fTech","fPlate","fPrice","fPart","fName"].forEach(id=>$(id).addEventListener("input",draw));
-["fSize","fShowName"].forEach(id=>$(id).addEventListener("change",draw));
+["fSize","fShowName","fRotate"].forEach(id=>$(id).addEventListener("change",draw));
+try{ const r=localStorage.getItem("labelRotate"); if(r) $("fRotate").value=r; }catch(e){}
+$("fRotate").addEventListener("change",()=>{ try{localStorage.setItem("labelRotate",$("fRotate").value);}catch(e){} });
 
 // 記住上次選的尺寸
 try{ const s=localStorage.getItem("labelSize"); if(s) $("fSize").value=s; }catch(e){}
