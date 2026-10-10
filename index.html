@@ -98,13 +98,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
       <div class="row">
         <button class="primary" id="btnBle">藍牙直接列印</button>
-        <button id="btnUsb">USB 列印（電腦）</button>
+        <button id="btnPc">電腦列印（打印助手）</button>
         <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦用 USB 線接 P1：按「USB 列印（電腦）」。<br>
+      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦（已安裝德佟打印助手／P1 驅動）：按「電腦列印」，會自動找 P1 印表機。<br>
       iPhone 不支援網頁藍牙：請按「分享到標籤 App」選微打，或長按預覽圖 →「儲存圖片」再到微打從相簿選圖。</p>
     </section>
   </div>
@@ -113,6 +113,8 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 <canvas id="cv" hidden></canvas>
 <!-- 德佟 LPAPI：瀏覽器藍牙(BLE)/USB 直接列印 -->
 <script src="https://cdn.jsdelivr.net/npm/lpapi-ble@1.7.260618/libs/index.umd.js"></script>
+<!-- 德佟 dtpweb：電腦端打印助手（127.0.0.1） -->
+<script src="https://cdn.jsdelivr.net/npm/dtpweb@2.7.260512/lib/dtpweb.umd.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const DPMM = 16;            // 每 mm 像素（203dpi 的 2 倍，縮放後依然清晰）
@@ -234,7 +236,29 @@ async function directPrint(mode, btn){
   finally{ btn.disabled=false; }
 }
 $("btnBle").onclick = e=>directPrint("ble", e.currentTarget);
-$("btnUsb").onclick = e=>directPrint("usb", e.currentTarget);
+// ── 電腦列印（dtpweb 打印助手） ──
+let pcApi = null;
+function pcCheck(){ return new Promise(res=>{
+  if (pcApi) return res(pcApi);
+  try{ dtpweb.checkServer((resp, api)=>{ if (resp && resp.statusCode===0){ pcApi=api; res(api);} else res(null); }); }
+  catch(e){ res(null); }
+});}
+$("btnPc").onclick = async e=>{
+  const btn=e.currentTarget;
+  if (!window.dtpweb){ out("電腦列印元件載入失敗，請確認網路後重新整理。"); return; }
+  btn.disabled=true; out("正在連線電腦上的打印助手…",true);
+  try{
+    const api = await pcCheck();
+    if (!api){ out("找不到打印助手。請先在這台電腦安裝「DTPWeb-Inst」或 P1 驅動，裝好後重新整理頁面。"); return; }
+    const list = api.getPrinters({onlyLocal:true}) || [];
+    if (!list.length){ out("打印助手已啟動，但沒找到印表機。請確認 P1 已開機並用 USB 接上電腦。"); return; }
+    const pick = list.find(d=>/P1/i.test(d.name||d.deviceName)) || list[0];
+    const [mw,mh] = $("fSize").value.split("x").map(Number);
+    const ok = api.printImage({ data: $("cv").toDataURL("image/png"), printerName: pick.name, printWidth: mw, printHeight: mh });
+    out(ok ? "已送到 "+pick.name+" ✓" : "送出失敗，請確認 "+pick.name+" 有紙、蓋子已蓋好。", !!ok);
+  }catch(err){ out("電腦列印出錯："+(err.message||err)); }
+  finally{ btn.disabled=false; }
+};
 
 // ── 輸出 ──
 $("btnShare").onclick = async ()=>{
