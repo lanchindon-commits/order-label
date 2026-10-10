@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>訂貨標籤產生器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+/* 版面：上方貼訊息 → 中間可修正欄位 → 下方標籤預覽與列印按鈕；手機單欄，桌機兩欄 */
+:root{
+  --bg:#f3f4f2; --panel:#ffffff; --ink:#1b1f1d; --muted:#626a66; --line:#d9ddd9;
+  --accent:#0f7a4a; --accent-ink:#ffffff; --warn:#b45309;
+  --font:"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#141816; --panel:#1d2220; --ink:#e8ebe9; --muted:#9aa39e; --line:#333a37;
+    --accent:#2fb173; --accent-ink:#06150d; --warn:#f59e0b; color-scheme:dark }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--font)}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 48px}
+header h1{font-size:22px;margin:0 0 4px;font-weight:900}
+header p{margin:0 0 18px;color:var(--muted);font-size:14px}
+.grid{display:grid;gap:16px;grid-template-columns:1fr}
+@media (min-width:820px){.grid{grid-template-columns:1fr 1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.panel h2{font-size:13px;letter-spacing:.08em;color:var(--muted);margin:0 0 10px;font-weight:700}
+textarea,input,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+textarea{min-height:170px;resize:vertical}
+textarea:focus,input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.fields label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);min-width:0}
+.fields .full{grid-column:1/-1}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+button{font:inherit;font-weight:700;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:10px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.check{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--ink)}
+.check input{width:auto}
+.preview{display:flex;justify-content:center;padding:18px;background:repeating-conic-gradient(var(--line) 0 25%,transparent 0 50%) 0 0/16px 16px;border-radius:8px}
+#labelImg{max-width:100%;width:320px;box-shadow:0 2px 10px rgba(0,0,0,.25);border-radius:6px;background:#fff}
+.hint{font-size:13px;color:var(--muted);margin:10px 0 0}
+.msg{font-size:13px;color:var(--warn);min-height:1.2em;margin-top:8px}
+.ok{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>訂貨標籤產生器</h1>
+    <p>把傳給客人的 LINE 預訂訊息貼上來，自動帶出標籤，存成圖片丟給 P1 標籤機的 App 列印。</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>1．貼上 LINE 訊息</h2>
+      <textarea id="src">ASON
+您好，我是技師(中寶)
+您的愛車:868-KCB
+材料 (副廠排氣管)
+價錢 ($1800)
+已經幫您預訂，貨到通知您，感謝</textarea>
+      <div class="row">
+        <button class="primary" id="btnParse">解析訊息</button>
+        <button id="btnPaste">從剪貼簿貼上</button>
+      </div>
+      <div class="msg" id="parseMsg"></div>
+
+      <h2 style="margin-top:16px">2．確認內容（可直接修改）</h2>
+      <div class="fields">
+        <label>預定日期<input id="fDate"></label>
+        <label>定料技師<input id="fTech"></label>
+        <label>車牌<input id="fPlate"></label>
+        <label>價錢<input id="fPrice" inputmode="numeric"></label>
+        <label class="full">材料名稱<input id="fPart"></label>
+        <label>客人名稱<input id="fName"></label>
+        <label>標籤尺寸
+          <select id="fSize">
+            <option value="40x30">40 × 30 mm</option>
+            <option value="50x30">50 × 30 mm</option>
+            <option value="50x40">50 × 40 mm</option>
+            <option value="50x50">50 × 50 mm</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="fShowName">標籤上印客人名稱</label>
+      </div>
+      <div class="row">
+        <button id="btnMsg">反過來：用上面欄位產生 LINE 訊息並複製</button>
+      </div>
+      <div class="msg" id="copyMsg"></div>
+    </section>
+
+    <section class="panel">
+      <h2>3．標籤預覽</h2>
+      <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
+      <div class="row">
+        <button class="primary" id="btnShare">分享到標籤 App</button>
+        <button id="btnDownload">下載圖片</button>
+        <button id="btnCopyImg">複製圖片</button>
+      </div>
+      <div class="msg" id="outMsg"></div>
+      <p class="hint">手機：按「分享到標籤 App」→ 選 P1 的 App → 匯入圖片列印。<br>
+      也可以長按預覽圖 →「儲存圖片」，再到 App 裡從相簿選圖。</p>
+    </section>
+  </div>
+</div>
+
+<canvas id="cv" hidden></canvas>
+<script>
+const $ = id => document.getElementById(id);
+const DPMM = 16;            // 每 mm 像素（203dpi 的 2 倍，縮放後依然清晰）
+let lastBlob = null;
+
+function today(){ const d=new Date(); return (d.getMonth()+1)+" / "+d.getDate(); }
+
+// ── 解析 LINE 訊息 ──
+function parseMsg(t){
+  const s = t.replace(/\r/g,"").replace(/（/g,"(").replace(/）/g,")").replace(/：/g,":");
+  const lines = s.split("\n").map(x=>x.trim()).filter(Boolean);
+  const pick = re => { const m = s.match(re); return m ? m[1].trim() : ""; };
+  const r = {
+    tech:  pick(/技師\s*\(?\s*([^)\n]+?)\s*\)/) || pick(/技師\s*[:\s]\s*(\S+)/),
+    plate: pick(/愛車\s*:?\s*([A-Za-z0-9]+-[A-Za-z0-9]+)/) || pick(/\b([A-Z0-9]{2,4}-[A-Z0-9]{2,4})\b/i),
+    part:  pick(/材料\s*\(\s*([^)\n]+)\)/) || pick(/材料(?:名稱)?\s*:?\s*([^\n]+)/),
+    price: pick(/價[錢格]\s*\(?\s*\$?\s*([\d,]+)/).replace(/,/g,""),
+    name:  ""
+  };
+  // 第一行如果不是問候/欄位，就當客人名稱
+  if (lines.length && !/您好|技師|愛車|材料|價|預訂/.test(lines[0])) r.name = lines[0];
+  r.plate = r.plate.toUpperCase();
+  return r;
+}
+
+function fillFromMsg(){
+  const r = parseMsg($("src").value);
+  $("fTech").value = r.tech; $("fPlate").value = r.plate; $("fPart").value = r.part;
+  $("fPrice").value = r.price; $("fName").value = r.name;
+  if (!$("fDate").value) $("fDate").value = today();
+  const miss = [["技師",r.tech],["車牌",r.plate],["材料",r.part],["價錢",r.price]].filter(x=>!x[1]).map(x=>x[0]);
+  const el = $("parseMsg");
+  el.className = "msg" + (miss.length ? "" : " ok");
+  el.textContent = miss.length ? "找不到：" + miss.join("、") + "，請在下方手動補上。" : "已帶入，請確認內容。";
+  draw();
+}
+
+// ── 畫標籤 ──
+function wrapText(ctx, text, maxW){
+  const out=[]; let cur="";
+  for (const ch of text){ if (ctx.measureText(cur+ch).width > maxW && cur){ out.push(cur); cur=ch; } else cur+=ch; }
+  if (cur) out.push(cur); return out.length?out:[""];
+}
+
+function layout(ctx, W, H, fs, rows){
+  const pad = Math.round(W*0.05), maxW = W - pad*2;
+  const ops=[]; let y = pad;
+  for (const r of rows){
+    const size = fs * (r.scale||1);
+    ctx.font = `${r.bold?900:700} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+    const lh = size*1.22;
+    if (r.label && r.inline){
+      const lw = ctx.measureText(r.label).width;
+      const vlines = wrapText(ctx, r.value, maxW - lw);
+      vlines.forEach((v,i)=>{ ops.push({font:ctx.font,x:pad,y,t:i?"":r.label}); ops.push({font:ctx.font,x:pad+lw,y,t:v}); y+=lh; });
+    } else {
+      wrapText(ctx, (r.label||"") + (r.value||""), maxW).forEach(v=>{ ops.push({font:ctx.font,x:pad,y,t:v}); y+=lh; });
+    }
+  }
+  return {ops, h:y+pad};
+}
+
+function draw(){
+  const [mw,mh] = $("fSize").value.split("x").map(Number);
+  const W = mw*DPMM, H = mh*DPMM;
+  const cv = $("cv"); cv.width=W; cv.height=H;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#000"; ctx.textBaseline="top";
+
+  const price = $("fPrice").value.trim();
+  const rows = [];
+  if ($("fShowName").checked && $("fName").value.trim()) rows.push({label:"客人：",value:$("fName").value.trim(),inline:true});
+  rows.push({label:"預定日期：",value:$("fDate").value.trim(),inline:true});
+  rows.push({label:"定料技師：",value:$("fTech").value.trim(),inline:true});
+  rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.25});
+  rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true});
+  rows.push({label:"價錢：",value:price ? "$"+price : "",inline:true});
+
+  // 從大字開始縮，直到塞得進標籤
+  let fs = Math.round(H/4), res;
+  do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while (res.h > H && fs > 10);
+  for (const o of res.ops){ ctx.font=o.font; ctx.fillText(o.t,o.x,o.y); }
+
+  cv.toBlob(b=>{ lastBlob=b; const u=URL.createObjectURL(b); const img=$("labelImg");
+    if (img.dataset.u) URL.revokeObjectURL(img.dataset.u); img.dataset.u=u; img.src=u;
+    img.style.width = (mw*6.4)+"px"; }, "image/png");
+}
+
+function fileName(){ return "訂貨_" + ($("fPlate").value||"label").replace(/[^\w-]/g,"") + ".png"; }
+function out(t,ok){ const e=$("outMsg"); e.className="msg"+(ok?" ok":""); e.textContent=t; }
+
+// ── 輸出 ──
+$("btnShare").onclick = async ()=>{
+  if (!lastBlob) return;
+  const f = new File([lastBlob], fileName(), {type:"image/png"});
+  if (navigator.canShare && navigator.canShare({files:[f]})){
+    try { await navigator.share({files:[f], title:"訂貨標籤"}); out("已開啟分享，請選標籤機 App。",true); }
+    catch(e){ if (e.name!=="AbortError") out("分享失敗，請改用「下載圖片」或長按預覽圖儲存。"); }
+  } else out("這個瀏覽器不支援直接分享，請用「下載圖片」或長按預覽圖儲存。");
+};
+$("btnDownload").onclick = ()=>{
+  if (!lastBlob) return;
+  const a=document.createElement("a"); a.href=URL.createObjectURL(lastBlob); a.download=fileName();
+  document.body.appendChild(a); a.click(); a.remove(); out("已下載 "+fileName(),true);
+};
+$("btnCopyImg").onclick = async ()=>{
+  try { await navigator.clipboard.write([new ClipboardItem({"image/png":lastBlob})]); out("圖片已複製。",true); }
+  catch(e){ out("這個瀏覽器不能複製圖片，請改用下載或分享。"); }
+};
+$("btnPaste").onclick = async ()=>{
+  try { $("src").value = await navigator.clipboard.readText(); fillFromMsg(); }
+  catch(e){ $("parseMsg").className="msg"; $("parseMsg").textContent="無法讀取剪貼簿，請直接在框內長按貼上。"; }
+};
+$("btnMsg").onclick = async ()=>{
+  const name=$("fName").value.trim(), price=$("fPrice").value.trim();
+  const t = (name?name+"\n":"") + `您好，我是技師(${$("fTech").value.trim()})\n您的愛車:${$("fPlate").value.trim()}\n材料 (${$("fPart").value.trim()})\n價錢 ($${price})\n已經幫您預訂，貨到通知您，感謝`;
+  $("src").value = t;
+  try { await navigator.clipboard.writeText(t); $("copyMsg").className="msg ok"; $("copyMsg").textContent="訊息已複製，可直接貼到 LINE。"; }
+  catch(e){ $("copyMsg").className="msg"; $("copyMsg").textContent="已放到上方訊息框，請手動複製。"; }
+};
+$("btnParse").onclick = fillFromMsg;
+// 點訊息框就全選，貼上時直接取代舊內容並自動產生標籤
+$("src").addEventListener("focus", e=>e.target.select());
+$("src").addEventListener("paste", ()=>{ $("fDate").value = today(); setTimeout(fillFromMsg,0); });
+["fDate","fTech","fPlate","fPrice","fPart","fName"].forEach(id=>$(id).addEventListener("input",draw));
+["fSize","fShowName"].forEach(id=>$(id).addEventListener("change",draw));
+
+// 記住上次選的尺寸
+try{ const s=localStorage.getItem("labelSize"); if(s) $("fSize").value=s; }catch(e){}
+$("fSize").addEventListener("change",()=>{ try{localStorage.setItem("labelSize",$("fSize").value);}catch(e){} });
+
+$("fDate").value = today();
+(document.fonts ? document.fonts.load('900 40px "Noto Sans TC"').catch(()=>{}) : Promise.resolve()).then(fillFromMsg);
+</script>
+</body>
+</html>
