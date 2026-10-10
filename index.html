@@ -173,9 +173,16 @@ function layout(ctx, W, H, fs, rows){
   const pad = Math.round(W*0.05), maxW = W - pad*2;
   const ops=[]; let y = pad, broke=false;
   for (const r of rows){
-    const size = fs * (r.scale||1);
-    ctx.font = `900 ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
-    const lh = size*1.22;
+    let size = fs * (r.scale||1);
+    const F = z => `900 ${z}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+    ctx.font = F(size);
+    // 單行欄位放不下時，只縮這一行，不拖累整張標籤
+    if (r.nowrap){
+      const txt = (r.label||"") + (r.value||"");
+      while (ctx.measureText(txt).width > maxW && size > fs){ size -= 1; ctx.font = F(size); }
+      if (ctx.measureText(txt).width > maxW) broke = true;
+    }
+    const lh = Math.max(size, fs)*1.22;
     if (r.label && r.inline){
       const lw = ctx.measureText(r.label).width;
       const vlines = wrapText(ctx, r.value, maxW - lw);
@@ -204,8 +211,7 @@ function draw(){
   rows.push({label:"預定日期：",value:$("fDate").value.trim(),inline:true,nowrap:true});
   rows.push({label:"定料技師：",value:$("fTech").value.trim(),inline:true,nowrap:true});
   if (mw < mh){  // 直式標籤：車牌、材料另起一行，跟原本手寫標籤一樣
-    rows.push({label:"車牌："});
-    rows.push({value:$("fPlate").value.trim(),bold:true,scale:1.35,nowrap:true});
+    rows.push({label:"車牌：",value:$("fPlate").value.trim(),inline:true,bold:true,scale:1.2,nowrap:true});
     rows.push({label:"材料名稱："});
     rows.push({value:$("fPart").value.trim()});
   } else {
@@ -217,7 +223,10 @@ function draw(){
   // 從大字開始縮，直到塞得進標籤
   let fs = Math.round(H/4), res;
   do { res = layout(ctx,W,H,fs,rows); fs -= 2; } while ((res.h > H || res.broke) && fs > 10);
-  for (const o of res.ops){ ctx.font=o.font; ctx.fillText(o.t,o.x,o.y); }
+  // 多出來的高度平均分配到行距，標籤不會下面空一大塊
+  const ys = [...new Set(res.ops.map(o=>o.y))].sort((a,b)=>a-b);
+  const gap = ys.length>1 ? Math.min(Math.max(0, H - res.h) / (ys.length-1), fs*0.6) : 0;
+  for (const o of res.ops){ ctx.font=o.font; ctx.fillText(o.t, o.x, o.y + ys.indexOf(o.y)*gap); }
 
   // 預覽：給人看的正向圖
   const img=$("labelImg"); img.src = cv.toDataURL("image/png"); img.style.width = (mw*6.4)+"px";
