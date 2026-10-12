@@ -391,17 +391,20 @@ $("btnPc").onclick = async e=>{
     }
     let pick = list.find(d=>/P1/i.test(nm(d))) || list.find(d=>/DT|DP|德佟/i.test(nm(d)));
     if (!pick){
-      for (const guess of ["P1 Label Printer","P1"]){ if (sendTo(api,{name:guess})){ pcPrinter={name:guess}; out("已送到 "+guess+" ✓", true); return; } }
-      // 3) 本機沒有 → 找區網其他電腦
+      // 3) 本機清單沒有 → 先找區網其他電腦
       out("本機沒有 P1，正在找區網其他電腦的 P1…", true); await nextPaint();
       const lan = await lanSearch(api);
       fillPrinterSelect(lan);
       pick = lan.find(d=>/P1/i.test(nm(d))) || lan.find(d=>/DT|DP|德佟/i.test(nm(d)));
-      if (!pick){
-        const names = lan.map(label).filter(Boolean);
-        out("找不到 P1。看得到的印表機："+(names.join("、")||"無")+"。請確認 P1 那台電腦有開、有裝打印助手，且在同一個網路。"); return;
+      if (pick){ saveTarget(pick); fillPrinterSelect(lan); }
+      else {
+        // 4) 最後一招：打印助手清單可能沒更新，直接用名稱試送（無法確認是否真的有這台）
+        const winNames = list.map(nm);
+        for (const guess of ["P1 Label Printer","P1"]){
+          if (sendTo(api,{name:guess})){ pcPrinter={name:guess}; out("已嘗試送到「"+guess+"」。如果 P1 沒有出紙，代表這台電腦沒有 P1，請看下方說明設定共用印表機。"); return; }
+        }
+        out("找不到 P1。這台電腦看得到的印表機："+(winNames.join("、")||"無")+"。若 P1 接在別台電腦，請在那台把 P1 設為「共用」，再到這台新增那台的共用印表機。"); return;
       }
-      saveTarget(pick); fillPrinterSelect(lan);
     }
     pcPrinter = pick;
     const ok = sendTo(api, pick);
