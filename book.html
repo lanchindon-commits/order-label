@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>選擇來店時間｜新莊忍店機車行</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1f2933;--mut:#6b7a72;--pri:#1d4ed8;--pri2:#e8efff;--ok:#12664f;--okbg:#dcf5ec;--err:#b42318;--errbg:#fde8e7;--line:#e3e7ee}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;-webkit-text-size-adjust:100%}
+[hidden]{display:none!important}
+header{background:#1a1a2e;color:#fff;padding:18px 16px 16px}
+header h1{margin:0;font-size:19px}
+header p{margin:4px 0 0;color:#aac4ff;font-size:13px}
+main{max-width:520px;margin:0 auto;padding:14px 14px 120px}
+.card{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.plate{font-size:22px;font-weight:700;color:var(--pri)}
+.kv{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:4px 0}
+.kv span:first-child{color:var(--mut);flex:none}
+.kv span:last-child{text-align:right;font-weight:600}
+h2{font-size:15px;margin:2px 0 10px}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:none;width:62px;border:1.5px solid var(--line);background:#fff;border-radius:12px;padding:8px 0;text-align:center;font-size:12px;color:var(--mut);cursor:pointer}
+.day b{display:block;font-size:19px;color:var(--ink);margin-top:2px}
+.day.on{border-color:var(--pri);background:var(--pri2);color:var(--pri)}
+.day.on b{color:var(--pri)}
+.slots{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.slot{border:1.5px solid var(--line);background:#fff;border-radius:10px;padding:10px 0;font-size:15px;text-align:center;cursor:pointer;color:var(--ink)}
+.slot.on{border-color:var(--pri);background:var(--pri);color:#fff;font-weight:700}
+.empty{color:var(--mut);font-size:14px;padding:8px 0}
+.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.bar .inner{max-width:520px;margin:0 auto}
+.sel{font-size:13px;color:var(--mut);margin-bottom:8px;text-align:center}
+.sel b{color:var(--ink)}
+button.go{width:100%;border:0;border-radius:12px;background:var(--pri);color:#fff;font-size:17px;font-weight:700;padding:14px;cursor:pointer}
+button.go:disabled{background:#a9b6d3}
+.msg{border-radius:12px;padding:14px 16px;font-size:15px;line-height:1.6;margin-bottom:12px}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.err{background:var(--errbg);color:var(--err)}
+.msg big{display:block;font-size:20px;font-weight:700;margin:4px 0}
+.note{font-size:12px;color:var(--mut);text-align:center;margin-top:6px}
+</style>
+</head>
+<body>
+<header><h1>📦 選擇來店時間</h1><p>新莊忍店機車行</p></header>
+<main>
+  <div id="loading" class="card">載入中…</div>
+  <div id="fatal" class="msg err" hidden></div>
+  <div id="done" class="msg ok" hidden></div>
+
+  <div id="info" class="card" hidden>
+    <div class="plate" id="iPlate"></div>
+    <div class="kv"><span>材料</span><span id="iPart"></span></div>
+    <div class="kv" id="iCurRow" hidden><span>目前預約</span><span id="iCur"></span></div>
+  </div>
+
+  <div id="picker" hidden>
+    <div class="card">
+      <h2>1. 選日期</h2>
+      <div class="days" id="days"></div>
+    </div>
+    <div class="card">
+      <h2>2. 選時間</h2>
+      <div class="slots" id="slots"></div>
+      <div class="note">營業時間：週一至週五 09:30-21:00・週六 09:30-18:00・週日公休</div>
+    </div>
+  </div>
+</main>
+<div class="bar" id="bar" hidden>
+  <div class="inner">
+    <div class="sel" id="sel">請選擇日期與時間</div>
+    <button class="go" id="go" disabled>確認來店時間</button>
+  </div>
+</div>
+<script>
+const SB_URL="https://hxzdmosganinyhtrswlj.supabase.co";
+const SB_KEY="sb_publishable_AYWfHD9vBAVk4Fv1tcuEVw_RTPM71RQ";
+const HOOK="https://hook.us2.make.com/wdc4cywy6od4gtita9iz6swv52ludlmo";
+const $=id=>document.getElementById(id);
+const q=new URLSearchParams(location.search);
+const ID=parseInt(q.get("id")||"",10), TOKEN=(q.get("t")||"").trim();
+const WD=["日","一","二","三","四","五","六"];
+let selDay=null, selTime=null;
+
+async function rpc(fn,body){
+  const r=await fetch(SB_URL+"/rest/v1/rpc/"+fn,{method:"POST",headers:{"apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>null);
+  if(!r.ok) throw new Error((j&&j.message)||("HTTP "+r.status));
+  return j;
+}
+// 台北時間的「現在」：以 UTC+8 換算成 Y/M/D/h/m
+function twNow(){const d=new Date(Date.now()+8*3600e3);return{y:d.getUTCFullYear(),m:d.getUTCMonth(),d:d.getUTCDate(),wd:d.getUTCDay(),min:d.getUTCHours()*60+d.getUTCMinutes()}}
+function dayList(n){
+  const t=twNow(),out=[];
+  for(let i=0;out.length<n&&i<30;i++){
+    const d=new Date(Date.UTC(t.y,t.m,t.d+i));
+    const wd=d.getUTCDay(); if(wd===0) continue;
+    out.push({y:d.getUTCFullYear(),m:d.getUTCMonth()+1,d:d.getUTCDate(),wd,today:i===0});
+  }
+  return out;
+}
+function slotsFor(day){
+  const last = day.wd===6 ? 17*60 : 20*60, out=[];
+  const now = day.today ? twNow().min + 60 : -1; // 今天至少一小時後
+  for(let m=9*60+30;m<=last;m+=30){ if(m>now) out.push(m); }
+  return out;
+}
+const p2=n=>String(n).padStart(2,"0");
+const hm=m=>p2(Math.floor(m/60))+":"+p2(m%60);
+const fmtTw=iso=>{const d=new Date(new Date(iso).getTime()+8*3600e3);return (d.getUTCMonth()+1)+"月"+d.getUTCDate()+"日（"+WD[d.getUTCDay()]+"） "+p2(d.getUTCHours())+":"+p2(d.getUTCMinutes())};
+
+function renderDays(){
+  const box=$("days"); box.innerHTML="";
+  dayList(14).forEach(day=>{
+    if(!slotsFor(day).length) return;
+    const b=document.createElement("div");
+    b.className="day"+(selDay&&selDay.d===day.d&&selDay.m===day.m?" on":"");
+    b.innerHTML=(day.today?"今天":"週"+WD[day.wd])+"<b>"+day.d+"</b>"+day.m+"月";
+    b.onclick=()=>{selDay=day;selTime=null;renderDays();renderSlots();upd()};
+    box.appendChild(b);
+  });
+}
+function renderSlots(){
+  const box=$("slots"); box.innerHTML="";
+  if(!selDay){box.innerHTML='<div class="empty" style="grid-column:1/-1">請先選日期</div>';return}
+  slotsFor(selDay).forEach(m=>{
+    const b=document.createElement("div");
+    b.className="slot"+(selTime===m?" on":"");
+    b.textContent=hm(m);
+    b.onclick=()=>{selTime=m;renderSlots();upd()};
+    box.appendChild(b);
+  });
+}
+function upd(){
+  const ok=selDay&&selTime!=null;
+  $("go").disabled=!ok;
+  $("sel").innerHTML=ok?"已選：<b>"+selDay.m+"月"+selDay.d+"日（週"+WD[selDay.wd]+"） "+hm(selTime)+"</b>":"請選擇日期與時間";
+}
+function fatal(t){$("loading").hidden=true;$("fatal").hidden=false;$("fatal").textContent=t}
+
+$("go").onclick=async()=>{
+  if(!(selDay&&selTime!=null)) return;
+  const go=$("go"); go.disabled=true; go.textContent="送出中…";
+  const iso=selDay.y+"-"+p2(selDay.m)+"-"+p2(selDay.d)+"T"+hm(selTime)+":00+08:00";
+  try{
+    const res=await rpc("ol_book",{p_id:ID,p_token:TOKEN,p_time:iso});
+    const map={past:"這個時間已經過了，請重新選擇。",too_far:"只能預約 30 天內的時間。",closed:"這個時段沒有營業，請重新選擇。",not_found:"找不到這筆訂貨資料，請直接聯絡店家。"};
+    if(res!=="ok"){alert(map[res]||("無法預約："+res));go.disabled=false;go.textContent="確認來店時間";return}
+    let cal=true;
+    try{const r=await fetch(HOOK,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:ID,token:TOKEN})});const j=await r.json().catch(()=>({}));cal=r.ok&&j.success!==false}catch(e){cal=false}
+    $("picker").hidden=true;$("bar").hidden=true;
+    $("done").hidden=false;
+    $("done").innerHTML="✅ 已收到您的來店時間<big>"+fmtTw(iso)+"</big>我們會在這個時間為您準備好零件。"+(cal?"":"<br><small>（店家會再跟您確認）</small>")+"<br><small>需要更改時，再點一次 LINE 訊息裡的按鈕即可。</small>";
+    window.scrollTo(0,0);
+  }catch(e){alert("送出失敗，請稍後再試\n"+e.message);go.disabled=false;go.textContent="確認來店時間"}
+};
+
+(async()=>{
+  if(!ID||!TOKEN) return fatal("連結不完整，請從 LINE 訊息重新開啟。");
+  try{
+    let r=await rpc("ol_booking_info",{p_id:ID,p_token:TOKEN});
+    if(Array.isArray(r)) r=r[0];
+    if(!r) return fatal("找不到這筆訂貨資料，請直接聯絡店家。");
+    $("loading").hidden=true;
+    $("info").hidden=false;
+    $("iPlate").textContent=r.plate||"";
+    $("iPart").textContent=r.part||"";
+    if(r.booked_time){$("iCurRow").hidden=false;$("iCur").textContent=fmtTw(r.booked_time)}
+    if(["done","cancelled"].includes(r.order_status)) return fatal("這筆訂貨已經完成或取消，如有問題請聯絡店家。");
+    $("picker").hidden=false;$("bar").hidden=false;
+    renderDays();renderSlots();upd();
+  }catch(e){fatal("載入失敗，請稍後再試（"+e.message+"）")}
+})();
+</script>
+</body>
+</html>
