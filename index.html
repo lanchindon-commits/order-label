@@ -53,9 +53,14 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .orders{margin-top:16px}
 .orders .head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
 .orders .head h2{margin:0}
-.ofilter{display:flex;gap:6px;flex-wrap:wrap}
-.ofilter button{padding:6px 12px;font-size:13px}
-.ofilter button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.ofilter{display:flex;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--bg)}
+.seg button{border:0;background:transparent;border-radius:999px;padding:4px 14px;font-size:13px;font-weight:700;color:var(--muted)}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.reload{border:0;background:transparent;color:var(--muted);font-size:18px;line-height:1;padding:4px 6px;border-radius:999px}
+.reload:hover{color:var(--ink);background:var(--line)}
+.reload.spin{animation:spin .6s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
 .olist{margin-top:12px;display:grid;gap:8px}
 .oi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
 .oi .t{font-weight:700;min-width:0;overflow-wrap:anywhere}
@@ -179,12 +184,11 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
   <section class="panel orders" id="ordersPanel">
     <div class="head">
       <h2>4．訂貨清單（到貨通知・客人預約）</h2>
-      <div class="ofilter" id="oFilter">
-        <button data-f="open" class="on">未完成</button>
-        <button data-f="ordered">待到貨</button>
-        <button data-f="booked">已預約</button>
-        <button data-f="all">全部</button>
-        <button id="oReload">重新整理</button>
+      <div class="ofilter">
+        <div class="seg" id="oFilter" role="tablist">
+          <button data-f="open" class="on">未完成</button><button data-f="booked">已預約</button><button data-f="all">全部</button>
+        </div>
+        <button class="reload" id="oReload" title="重新整理" aria-label="重新整理">↻</button>
       </div>
     </div>
     <div class="olist" id="oList"><div class="hint">載入中…</div></div>
@@ -697,10 +701,10 @@ function renderOrders(){
   }).join("");
 }
 $("oFilter").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b) return;
-  if(b.id==="oReload"){ loadOrders(); return; }
-  oFilter=b.dataset.f; [...$("oFilter").querySelectorAll("button[data-f]")].forEach(x=>x.classList.toggle("on",x===b)); renderOrders();
+  const b=e.target.closest("button[data-f]"); if(!b) return;
+  oFilter=b.dataset.f; [...$("oFilter").querySelectorAll("button")].forEach(x=>x.classList.toggle("on",x===b)); renderOrders();
 });
+$("oReload").addEventListener("click",()=>{ const r=$("oReload"); r.classList.remove("spin"); void r.offsetWidth; r.classList.add("spin"); loadOrders(); });
 $("oList").addEventListener("click",async e=>{
   const b=e.target.closest("button[data-a]"); if(!b) return;
   const id=+b.dataset.id, a=b.dataset.a, key=shopKey(); if(!key){ needKey(); return; }
