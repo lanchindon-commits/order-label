@@ -107,12 +107,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <div class="row">
         <button class="primary" id="btnBle">藍牙直接列印</button>
         <button id="btnPc">電腦列印（打印助手）</button>
+        <button id="btnWindows">Windows 系統列印</button>
         <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦（已安裝德佟打印助手／P1 驅動）：按「電腦列印」，會自動找 P1 印表機。<br>
+      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦若找不到打印助手：按「Windows 系統列印」，於列印對話框選擇 P1 Label Printer，紙張尺寸依上方標籤尺寸設定、縮放 100%、邊界無、關閉頁首及頁尾。<br>
       iPhone 不支援網頁藍牙：請按「分享到標籤 App」選微打，或長按預覽圖 →「儲存圖片」再到微打從相簿選圖。</p>
     </section>
   </div>
@@ -302,6 +303,32 @@ async function directPrint(mode, btn){
   finally{ btn.disabled=false; }
 }
 $("btnBle").onclick = e=>directPrint("ble", e.currentTarget);
+// ── Windows 系統列印：不依賴本機打印助手 ──
+// 瀏覽器無法自行指定預設印表機；由使用者在系統列印對話框選擇 P1。
+$("btnWindows").onclick = () => {
+  const [widthMM, heightMM] = printSize();
+  const image = $("pcv").toDataURL("image/png");
+  if (!$("pcv").width || !$("pcv").height) { out("請先產生標籤預覽。"); return; }
+  const win = window.open("", "_blank", "width=620,height=740");
+  if (!win) { out("瀏覽器封鎖了列印視窗，請允許此網站的彈出式視窗。"); return; }
+  const html = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>P1 標籤列印</title>
+<style>
+@page { size: ${widthMM}mm ${heightMM}mm; margin: 0; }
+html,body { width:${widthMM}mm; height:${heightMM}mm; margin:0; padding:0; background:white; overflow:hidden; }
+img { display:block; width:${widthMM}mm; height:${heightMM}mm; max-width:none; }
+@media screen { body { margin:16px; outline:1px solid #ddd; } }
+</style></head><body><img id="label" alt="訂貨標籤" src="${image}">
+<script>
+  const img = document.getElementById("label");
+  const go = () => { window.focus(); window.print(); };
+  if (img.complete) go(); else img.onload=go;
+<\/script></body></html>`;
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  out("已開啟系統列印視窗：選擇 P1 Label Printer，確認紙張尺寸、縮放 100%、邊界無、關閉頁首頁尾。", true);
+};
+
 // ── 電腦列印（dtpweb 打印助手） ──
 let pcApi = null;
 function pcCheck(){ return new Promise(res=>{
