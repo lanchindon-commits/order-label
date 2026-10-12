@@ -346,6 +346,12 @@ $("btnPc").onclick = async e=>{
     const isDt = d => /P1|DT|DP|德佟|Detong|Dothan/i.test(nm(d));
     const pick = list.find(d=>/P1/i.test(nm(d))) || list.find(isDt);
     if (!pick){
+      // 打印助手的清單可能還沒更新（P1 是後來才加進 Windows 的），直接用常見名稱試印一次
+      const [pw0,ph0] = printSize();
+      for (const guess of ["P1 Label Printer","P1"]){
+        let ok0=false; try{ ok0 = api.printImage({ data: $("pcv").toDataURL("image/png"), printerName: guess, printWidth: pw0, printHeight: ph0 }); }catch(e){}
+        if (ok0){ pcPrinter = guess; out("已送到 "+guess+" ✓", true); return; }
+      }
       const names = list.map(nm).filter(Boolean);
       out(names.length
         ? "沒找到 P1。這台電腦看得到的印表機：" + names.join("、") + "。請確認 P1 用「可傳資料的 USB 線」接上，並在 Windows「印表機與掃描器」裡出現。"
