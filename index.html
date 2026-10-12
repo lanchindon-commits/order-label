@@ -106,7 +106,6 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
       <div class="row">
         <button class="primary" id="btnPc">列印標籤</button>
-        <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
@@ -375,14 +374,6 @@ function loadLib(k){
 const nextPaint = () => new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
 
 // ── 輸出 ──
-$("btnShare").onclick = async ()=>{
-  if (!lastBlob) return;
-  const f = new File([lastBlob], fileName(), {type:"image/png"});
-  if (navigator.canShare && navigator.canShare({files:[f]})){
-    try { await navigator.share({files:[f], title:"訂貨標籤"}); out("已開啟分享，請選標籤機 App。",true); }
-    catch(e){ if (e.name!=="AbortError") out("分享失敗，請改用「下載圖片」或長按預覽圖儲存。"); }
-  } else out("這個瀏覽器不支援直接分享，請用「下載圖片」或長按預覽圖儲存。");
-};
 $("btnDownload").onclick = ()=>{
   if (!lastBlob) return;
   const a=document.createElement("a"); a.href=URL.createObjectURL(lastBlob); a.download=fileName();
