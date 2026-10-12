@@ -109,8 +109,14 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
+      <div class="row">
+        <label class="check" style="flex:1;min-width:0">印表機
+          <select id="fPrinter" style="flex:1;min-width:0"><option value="">自動（先找本機 P1，找不到再找區網）</option></select>
+        </label>
+        <button id="btnFind">搜尋印表機</button>
+      </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">P1 用 USB 接在這台電腦（需已安裝德佟打印助手／P1 驅動），按「列印標籤」會自動找 P1 列印。<br>
+      <p class="hint">P1 可以接在這台電腦，或接在同一個網路的另一台電腦（例如 FIXNSERVER）；兩台都要裝德佟打印助手。按「搜尋印表機」選好一次，之後都會印到那台。<br>
       快速鍵：貼上訊息後按 <b>Ctrl + Enter</b> 直接列印。</p>
     </section>
   </div>
@@ -312,57 +318,94 @@ async function directPrint(mode, btn){
   }catch(e){ out("列印出錯："+(e.message||e)+"（"+env()+"）"); }
   finally{ btn.disabled=false; }
 }
-// ── 電腦列印（dtpweb 打印助手） ──
+// ── 電腦列印（dtpweb 打印助手，可印到本機或區網其他電腦的 P1） ──
 let pcApi = null, pcPrinter = null;
+const nm = d => (d && (d.name || d.deviceName)) || "";
+const label = d => nm(d) + (d.ip && pcApi && !pcApi.isLocalPrinter(d) ? "（在 "+(d.hostname||d.ip)+"）" : "（本機）");
 function pcCheck(){ return new Promise(res=>{
   if (pcApi) return res(pcApi);
   try{ dtpweb.checkServer((resp, api)=>{ if (resp && resp.statusCode===0){ pcApi=api; res(api);} else res(null); }); }
   catch(e){ res(null); }
 });}
+// 使用者指定的印表機（存在這台電腦的瀏覽器）
+let target = null;
+try{ target = JSON.parse(localStorage.getItem("pcTarget")||"null"); }catch(e){}
+function saveTarget(d){ target = d ? {name:nm(d), ip:d.ip, hostname:d.hostname, type:d.type, httpPort:d.httpPort, httpsPort:d.httpsPort, devicePort:d.devicePort} : null;
+  try{ localStorage.setItem("pcTarget", JSON.stringify(target)); }catch(e){} }
+function fillPrinterSelect(list){
+  const sel=$("fPrinter"); sel.innerHTML='<option value="">自動（先找本機 P1，找不到再找區網）</option>';
+  list.forEach((d,i)=>{ const o=new Option(label(d), String(i)); sel.add(o); });
+  sel._list = list;
+  if (target){ const i=list.findIndex(d=>nm(d)===target.name && (d.ip||"")===(target.ip||"")); if (i>=0) sel.value=String(i); else { sel.add(new Option(target.name+(target.hostname||target.ip?"（在 "+(target.hostname||target.ip)+"）":"")+"・上次使用","saved")); sel.value="saved"; } }
+}
+if (target) fillPrinterSelect([]);
+$("fPrinter").addEventListener("change", e=>{
+  const v=e.target.value; if (v==="saved") return;
+  saveTarget(v==="" ? null : e.target._list[+v]); pcPrinter=null;
+  out(v==="" ? "改回自動找印表機。" : "之後都印到："+label(e.target._list[+v]), true);
+});
+async function lanSearch(api){
+  try{ api.discoveryPrinters(); }catch(e){}
+  await new Promise(r=>setTimeout(r,2500));   // 原廠建議下達搜尋 2 秒後再取清單
+  try{ return api.getPrinters({onlyLocal:false, onlyOnline:false, onlySupported:false}) || []; }catch(e){ return []; }
+}
+$("btnFind").onclick = async e=>{
+  const btn=e.currentTarget; btn.disabled=true; out("正在搜尋這台與區網內其他電腦的印表機（約 3 秒）…",true);
+  await loadLib("pc");
+  try{
+    const api = window.dtpweb && await pcCheck();
+    if (!api){ out("這台電腦沒有打印助手，請先安裝德佟打印助手。"); return; }
+    const list = await lanSearch(api);
+    fillPrinterSelect(list);
+    const p1 = list.filter(d=>/P1|DT|DP/i.test(nm(d)));
+    out(list.length ? "找到 "+list.length+" 台印表機"+(p1.length?"，其中 P1："+p1.map(label).join("、"):"，但沒有 P1")+"。請在「印表機」選單選一台。" : "沒有找到任何印表機。", !!p1.length);
+  } finally { btn.disabled=false; }
+};
+function sendTo(api, dev){
+  const [pw,ph] = printSize();
+  const opt = { data: $("pcv").toDataURL("image/png"), printWidth: pw, printHeight: ph, printerName: nm(dev) };
+  if (dev.ip && !api.isLocalPrinter(dev)) opt.printer = dev;   // 區網印表機要帶上所在電腦的 IP
+  try{ return api.printImage(opt); }catch(e){ return false; }
+}
 $("btnPc").onclick = async e=>{
   const btn=e.currentTarget;
-  btn.disabled=true; out(pcPrinter ? "列印中…" : "正在連線電腦上的打印助手…",true);
+  btn.disabled=true; out(pcPrinter||target ? "列印中…" : "正在連線電腦上的打印助手…",true);
   await loadLib("pc");
   if (!window.dtpweb){ btn.disabled=false; out("電腦列印元件載入失敗，請確認網路後重新整理。"); return; }
   await nextPaint();   // 先讓畫面顯示「列印中」，再做會卡住畫面的同步呼叫
   try{
     const api = await pcCheck();
     if (!api){ out("找不到打印助手。請先在這台電腦安裝「DTPWeb-Inst」或 P1 驅動，裝好後重新整理頁面。"); return; }
-    // 先找「已連線的德佟印表機」，找不到再放寬條件（離線、非預設型號、網路印表機）
-    const nm = d => d.name || d.deviceName || "";
-    if (pcPrinter){
-      const [pw,ph] = printSize();
-      const ok = api.printImage({ data: $("pcv").toDataURL("image/png"), printerName: pcPrinter, printWidth: pw, printHeight: ph });
-      if (ok){ out("已送到 "+pcPrinter+" ✓", true); return; }
-      pcPrinter = null;  // 失敗就重新搜尋
+    // 1) 有指定印表機（例如 FIXNSERVER 上的 P1）就直接印
+    if (target){
+      if (sendTo(api, target)){ out("已送到 "+label(target)+" ✓", true); return; }
+      out("送不到 "+label(target)+"。請確認那台電腦有開、P1 有開機，或按「搜尋印表機」重新選。"); return;
     }
-    const tries = [
-      {onlyLocal:true},
-      {onlyLocal:true, onlyOnline:false},
-      {onlyLocal:false, onlyOnline:false, onlySupported:false}
-    ];
-    let list = [], level = 0;
-    for (; level < tries.length; level++){ try{ list = api.getPrinters(tries[level]) || []; }catch(e){ list = []; } if (list.length) break; }
-    const isDt = d => /P1|DT|DP|德佟|Detong|Dothan/i.test(nm(d));
-    const pick = list.find(d=>/P1/i.test(nm(d))) || list.find(isDt);
+    // 2) 自動：先找本機
+    if (pcPrinter && sendTo(api, pcPrinter)){ out("已送到 "+label(pcPrinter)+" ✓", true); return; }
+    pcPrinter = null;
+    let list = [];
+    for (const t of [{onlyLocal:true},{onlyLocal:true, onlyOnline:false},{onlyLocal:true, onlyOnline:false, onlySupported:false}]){
+      try{ list = api.getPrinters(t) || []; }catch(e){ list = []; }
+      if (list.some(d=>/P1|DT|DP/i.test(nm(d)))) break;
+    }
+    let pick = list.find(d=>/P1/i.test(nm(d))) || list.find(d=>/DT|DP|德佟/i.test(nm(d)));
     if (!pick){
-      // 打印助手的清單可能還沒更新（P1 是後來才加進 Windows 的），直接用常見名稱試印一次
-      const [pw0,ph0] = printSize();
-      for (const guess of ["P1 Label Printer","P1"]){
-        let ok0=false; try{ ok0 = api.printImage({ data: $("pcv").toDataURL("image/png"), printerName: guess, printWidth: pw0, printHeight: ph0 }); }catch(e){}
-        if (ok0){ pcPrinter = guess; out("已送到 "+guess+" ✓", true); return; }
+      for (const guess of ["P1 Label Printer","P1"]){ if (sendTo(api,{name:guess})){ pcPrinter={name:guess}; out("已送到 "+guess+" ✓", true); return; } }
+      // 3) 本機沒有 → 找區網其他電腦
+      out("本機沒有 P1，正在找區網其他電腦的 P1…", true); await nextPaint();
+      const lan = await lanSearch(api);
+      fillPrinterSelect(lan);
+      pick = lan.find(d=>/P1/i.test(nm(d))) || lan.find(d=>/DT|DP|德佟/i.test(nm(d)));
+      if (!pick){
+        const names = lan.map(label).filter(Boolean);
+        out("找不到 P1。看得到的印表機："+(names.join("、")||"無")+"。請確認 P1 那台電腦有開、有裝打印助手，且在同一個網路。"); return;
       }
-      const names = list.map(nm).filter(Boolean);
-      out(names.length
-        ? "沒找到 P1。這台電腦看得到的印表機：" + names.join("、") + "。請確認 P1 用「可傳資料的 USB 線」接上，並在 Windows「印表機與掃描器」裡出現。"
-        : "打印助手已啟動，但這台電腦沒有任何印表機。請確認：①P1 開機 ②用可傳資料的 USB 線（不是充電線）③Windows「印表機與掃描器」有出現 P1。");
-      return;
+      saveTarget(pick); fillPrinterSelect(lan);
     }
-    if (level > 0) out("找到 "+nm(pick)+"（狀態可能是離線），嘗試列印…", true);
-    pcPrinter = nm(pick);
-    const [pw,ph] = printSize();
-    const ok = api.printImage({ data: $("pcv").toDataURL("image/png"), printerName: nm(pick), printWidth: pw, printHeight: ph });
-    out(ok ? "已送到 "+nm(pick)+" ✓" : "送出失敗，請確認 "+nm(pick)+" 有開機、有紙、蓋子已蓋好；Windows 裡它若顯示「離線」，請把 USB 拔掉重插。", !!ok);
+    pcPrinter = pick;
+    const ok = sendTo(api, pick);
+    out(ok ? "已送到 "+label(pick)+" ✓" : "送出失敗，請確認 "+nm(pick)+" 有開機、有紙、蓋子已蓋好。", !!ok);
   }catch(err){ out("電腦列印出錯："+(err.message||err)); }
   finally{ btn.disabled=false; }
 };
