@@ -19,6 +19,7 @@
     --accent:#2fb173; --accent-ink:#06150d; --warn:#f59e0b; color-scheme:dark }
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 var(--font)}
 .wrap{max-width:980px;margin:0 auto;padding:20px 16px 48px}
 header h1{font-size:22px;margin:0 0 4px;font-weight:900}
@@ -43,6 +44,12 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .hint{font-size:13px;color:var(--muted);margin:10px 0 0}
 .msg{font-size:13px;color:var(--warn);min-height:1.2em;margin-top:8px}
 .ok{color:var(--accent)}
+.station{background:var(--panel);border:2px solid var(--accent);border-radius:12px;padding:16px;margin-bottom:16px}
+.station h2{margin:0 0 6px;font-size:18px}
+.station .big{font-size:28px;font-weight:900;font-variant-numeric:tabular-nums}
+.station ol{margin:8px 0 0;padding-left:20px;max-height:220px;overflow:auto;font-size:14px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:13px;font-weight:700;background:var(--line)}
+.pill.on{background:var(--accent);color:var(--accent-ink)}
 </style>
 </head>
 <body>
@@ -51,6 +58,18 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
     <h1>訂貨標籤產生器</h1>
     <p>把傳給客人的 LINE 預訂訊息貼上來，自動帶出標籤，按「列印標籤」直接用 P1 印出。</p>
   </header>
+
+  <section class="station" id="stationPanel" hidden>
+    <h2>🖨 列印站 <span class="pill" id="stState">連線中…</span></h2>
+    <p style="margin:0;color:var(--muted)">這台電腦會自動印出其他電腦送來的訂貨標籤。請讓這個網頁一直開著（可以縮小）。</p>
+    <div class="row">
+      <span>今天已印 <span class="big" id="stCount">0</span> 張</span>
+      <label class="check">列印站名稱 <input id="fStationName" style="width:10em"></label>
+      <button id="btnStationTest">印測試標籤</button>
+      <button id="btnStationOff">停止列印站</button>
+    </div>
+    <ol id="stLog"></ol>
+  </section>
 
   <div class="grid">
     <section class="panel">
@@ -110,6 +129,20 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="row">
+        <label class="check" style="flex:1;min-width:0">列印方式
+          <select id="fMode" style="flex:1;min-width:0">
+            <option value="station">送到列印站（例如 FIXNSERVER 旁的 P1）</option>
+            <option value="local">這台電腦直接印（P1 接在這台）</option>
+          </select>
+        </label>
+        <button id="btnStationOn">把這台設為列印站</button>
+      </div>
+      <div class="row" id="keyRow" hidden>
+        <input id="fShopKey" placeholder="輸入店內代碼（每台電腦只要輸入一次）" style="flex:1;min-width:0">
+        <button id="btnKey">儲存</button>
+      </div>
+      <div id="localOpts">
+      <div class="row">
         <label class="check" style="flex:1;min-width:0">印表機
           <select id="fPrinter" style="flex:1;min-width:0"><option value="">自動（先找本機 P1，找不到再找區網）</option></select>
         </label>
@@ -119,8 +152,10 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <input id="fPrinterName" placeholder="輸入 Windows 裡的印表機名稱，例如：P1 FIXNSERVER" style="flex:1;min-width:0">
         <button id="btnManual">使用這台</button>
       </div>
+      </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">P1 可以接在這台電腦，或接在同一個網路的另一台電腦（例如 FIXNSERVER）；兩台都要裝德佟打印助手。按「搜尋印表機」選好一次，之後都會印到那台。<br>
+      <p class="hint">「送到列印站」：P1 接在別台電腦（例如 FIXNSERVER），那台開著本網頁並按「把這台設為列印站」，這台按列印就會從那邊印出。<br>
+      「這台電腦直接印」：P1 用 USB 接在這台，需裝德佟打印助手。<br>
       快速鍵：貼上訊息後按 <b>Ctrl + Enter</b> 直接列印。</p>
     </section>
   </div>
@@ -373,13 +408,13 @@ $("btnFind").onclick = async e=>{
     out(list.length ? "找到 "+list.length+" 台印表機"+(p1.length?"，其中 P1："+p1.map(label).join("、"):"，但沒有 P1")+"。請在「印表機」選單選一台。" : "沒有找到任何印表機。", !!p1.length);
   } finally { btn.disabled=false; }
 };
-function sendTo(api, dev){
-  const [pw,ph] = printSize();
-  const opt = { data: $("pcv").toDataURL("image/png"), printWidth: pw, printHeight: ph, printerName: nm(dev) };
+function sendTo(api, dev, data, w, h){
+  const [pw,ph] = data ? [w,h] : printSize();
+  const opt = { data: data || $("pcv").toDataURL("image/png"), printWidth: pw, printHeight: ph, printerName: nm(dev) };
   if (dev.ip && !api.isLocalPrinter(dev)) opt.printer = dev;   // 區網印表機要帶上所在電腦的 IP
   try{ return api.printImage(opt); }catch(e){ return false; }
 }
-$("btnPc").onclick = async e=>{
+async function localPrint(e){
   const btn=e.currentTarget;
   btn.disabled=true; out(pcPrinter||target ? "列印中…" : "正在連線電腦上的打印助手…",true);
   await loadLib("pc");
@@ -423,10 +458,131 @@ $("btnPc").onclick = async e=>{
     out(ok ? "已送到 "+label(pick)+" ✓" : "送出失敗，請確認 "+nm(pick)+" 有開機、有紙、蓋子已蓋好。", !!ok);
   }catch(err){ out("電腦列印出錯："+(err.message||err)); }
   finally{ btn.disabled=false; }
+}
+
+// ── 列印站（透過 Supabase 轉送） ──
+const SB_URL = "https://hxzdmosganinyhtrswlj.supabase.co";
+const SB_KEY = "sb_publishable_AYWfHD9vBAVk4Fv1tcuEVw_RTPM71RQ";
+const LS = { get:k=>{ try{return localStorage.getItem(k);}catch(e){return null;} }, set:(k,v)=>{ try{localStorage.setItem(k,v);}catch(e){} } };
+let sb = null, sbChan = null;
+async function getSb(){
+  if (sb) return sb;
+  await loadLib("sb");
+  sb = window.supabase.createClient(SB_URL, SB_KEY, { auth:{ persistSession:false } });
+  return sb;
+}
+async function rpc(fn, args){
+  const c = await getSb();
+  const { data, error } = await c.rpc(fn, args);
+  if (error) throw new Error(/bad shop key/.test(error.message) ? "店內代碼錯誤" : error.message);
+  return data;
+}
+function shopKey(){ return (LS.get("shopKey")||"").trim(); }
+function needKey(){ $("keyRow").hidden=false; $("fShopKey").focus(); out("請先輸入店內代碼（問老闆），每台電腦只要輸入一次。"); }
+$("btnKey").onclick = ()=>{ const k=$("fShopKey").value.trim().toUpperCase(); if(!k) return; LS.set("shopKey",k); $("keyRow").hidden=true; out("店內代碼已儲存。", true); };
+
+// 列印方式
+function applyMode(){ $("localOpts").hidden = $("fMode").value!=="local"; }
+$("fMode").value = LS.get("printMode") || "station";
+$("fMode").addEventListener("change", ()=>{ LS.set("printMode",$("fMode").value); applyMode(); });
+applyMode();
+
+function orderFields(){
+  return { order_date:$("fDate").value.trim(), technician:$("fTech").value.trim(), plate:$("fPlate").value.trim(),
+           part:$("fPart").value.trim(), price:$("fPrice").value.trim(), customer_name:$("fName").value.trim(), raw_message:$("src").value };
+}
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+// 送單到列印站，並等列印站回報
+async function stationPrint(){
+  const key = shopKey(); if (!key){ needKey(); return; }
+  if (!$("fPlate").value.trim() && !$("fPart").value.trim()){ out("請先貼上訂貨訊息。"); return; }
+  const btn=$("btnPc"); btn.disabled=true; out("送出中…", true);
+  try{
+    const [pw,ph] = printSize();
+    const id = await rpc("ol_enqueue", { p_key:key, p_order:orderFields(), p_label:$("pcv").toDataURL("image/png"), p_w:pw, p_h:ph, p_source:(LS.get("stationName")||navigator.platform||"") });
+    try{ const c=await getSb(); c.channel("order-label-print").send({type:"broadcast", event:"new", payload:{id}}); }catch(e){}
+    out("已送出，等待列印站印出…", true);
+    for (let i=0;i<20;i++){
+      await sleep(1500);
+      const r = (await rpc("ol_status",{p_key:key, p_id:id}))[0] || {};
+      if (r.print_status==="printed"){ out("✓ 已在「"+(r.print_station||"列印站")+"」印出（單號 "+id+"）", true); return; }
+      if (r.print_status==="failed"){ out("列印站印失敗："+(r.print_error||"未知原因")+"（單號 "+id+"）"); return; }
+      if (r.print_status==="printing") out("列印站正在印…", true);
+    }
+    out("列印站 30 秒內沒有回應。這張已排隊（單號 "+id+"），請確認 FIXNSERVER 的列印站網頁有開著，開啟後會自動補印。");
+  }catch(err){ out("送出失敗："+err.message); if (/代碼/.test(err.message)) needKey(); }
+  finally{ btn.disabled=false; }
+}
+
+$("btnPc").onclick = e => ($("fMode").value==="local" ? localPrint(e) : stationPrint());
+
+// ── 這台當列印站 ──
+let stOn=false, stBusy=false, stTimer=null, wakeLock=null;
+function stLog(t, ok){ const li=document.createElement("li"); li.textContent=new Date().toLocaleTimeString("zh-TW",{hour12:false})+"　"+t; if(!ok) li.style.color="var(--warn)"; $("stLog").prepend(li); while($("stLog").children.length>50) $("stLog").lastChild.remove(); }
+function stCountAdd(){ const d=new Date().toDateString(); let c=JSON.parse(LS.get("stCount")||"{}"); if(c.d!==d) c={d,n:0}; c.n++; LS.set("stCount",JSON.stringify(c)); $("stCount").textContent=c.n; }
+function stCountShow(){ const d=new Date().toDateString(); const c=JSON.parse(LS.get("stCount")||"{}"); $("stCount").textContent = c.d===d ? c.n : 0; }
+
+async function stationPrinter(api){
+  if (target && !target.ip) return target;            // 手動指定的本機印表機
+  if (pcPrinter && !pcPrinter.ip) return pcPrinter;
+  let list=[]; for (const t of [{onlyLocal:true},{onlyLocal:true,onlyOnline:false},{onlyLocal:true,onlyOnline:false,onlySupported:false}]){
+    try{ list=api.getPrinters(t)||[]; }catch(e){ list=[]; } if (list.some(d=>/P1|DT|DP/i.test(nm(d)))) break; }
+  return list.find(d=>/P1/i.test(nm(d))) || list.find(d=>/DT|DP|德佟/i.test(nm(d))) || {name:"P1 Label Printer"};
+}
+async function stationRun(){
+  if (!stOn || stBusy) return; stBusy=true;
+  try{
+    const key=shopKey(); const name=$("fStationName").value.trim()||"列印站";
+    const jobs = await rpc("ol_claim",{p_key:key, p_station:name}) || [];
+    if (jobs.length){
+      await loadLib("pc"); const api = window.dtpweb && await pcCheck();
+      for (const j of jobs){
+        if (!api){ await rpc("ol_done",{p_key:key,p_id:j.id,p_ok:false,p_error:"列印站電腦找不到打印助手"}); stLog("#"+j.id+" 失敗：找不到打印助手"); continue; }
+        const dev = await stationPrinter(api);
+        const ok = sendTo(api, dev, j.label_png, +j.label_w_mm, +j.label_h_mm);
+        if (ok) pcPrinter = dev;
+        await rpc("ol_done",{p_key:key,p_id:j.id,p_ok:!!ok,p_error: ok?null:("送不到 "+nm(dev))});
+        stLog("#"+j.id+" "+(j.plate||"")+(ok?" 已印出 → "+nm(dev):" 失敗：送不到 "+nm(dev)), ok);
+        if (ok) stCountAdd();
+      }
+    }
+    $("stState").textContent="運作中"; $("stState").className="pill on";
+  }catch(err){ $("stState").textContent="連線異常，重試中"; $("stState").className="pill"; stLog("連線異常："+err.message); }
+  finally{ stBusy=false; }
+}
+async function stationStart(){
+  if (!shopKey()){ needKey(); return; }
+  stOn=true; LS.set("stationOn","1");
+  $("stationPanel").hidden=false;
+  $("fStationName").value = LS.get("stationName") || "FIXNSERVER";
+  stCountShow();
+  try{ const c=await getSb(); sbChan = c.channel("order-label-print").on("broadcast",{event:"new"},()=>stationRun()).subscribe(); }catch(e){ stLog("即時通知連線失敗，改用每 5 秒檢查一次"); }
+  clearInterval(stTimer); stTimer=setInterval(stationRun, 5000);
+  try{ wakeLock = await navigator.wakeLock?.request("screen"); }catch(e){}
+  stLog("列印站啟動", true); stationRun();
+  window.scrollTo({top:0});
+}
+function stationStop(){
+  stOn=false; LS.set("stationOn",""); clearInterval(stTimer); $("stationPanel").hidden=true;
+  try{ sbChan && sb.removeChannel(sbChan); }catch(e){} sbChan=null;
+  try{ wakeLock && wakeLock.release(); }catch(e){}
+}
+$("btnStationOn").onclick = stationStart;
+$("btnStationOff").onclick = stationStop;
+$("fStationName").addEventListener("change", ()=>LS.set("stationName",$("fStationName").value.trim()));
+$("btnStationTest").onclick = async ()=>{
+  await loadLib("pc"); const api = window.dtpweb && await pcCheck();
+  if (!api){ stLog("找不到打印助手，請在這台安裝德佟打印助手"); return; }
+  const dev = await stationPrinter(api); const [pw,ph]=printSize();
+  const ok = sendTo(api, dev, $("pcv").toDataURL("image/png"), pw, ph);
+  stLog(ok ? "測試標籤已送到 "+nm(dev) : "測試失敗：送不到 "+nm(dev), ok);
 };
+if (LS.get("stationOn")==="1") setTimeout(stationStart, 300);
 
 // ── 列印元件：用到才載入 ──
 const LIBS = {
+  sb:  "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js",
   ble: "https://cdn.jsdelivr.net/npm/lpapi-ble@1.7.260618/libs/index.umd.js",
   pc:  "https://cdn.jsdelivr.net/npm/dtpweb@2.7.260512/lib/dtpweb.umd.js"
 };
