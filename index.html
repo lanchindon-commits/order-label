@@ -49,7 +49,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 <div class="wrap">
   <header>
     <h1>訂貨標籤產生器</h1>
-    <p>把傳給客人的 LINE 預訂訊息貼上來，自動帶出標籤，存成圖片丟給 P1 標籤機的 App 列印。</p>
+    <p>把傳給客人的 LINE 預訂訊息貼上來，自動帶出標籤，按「列印標籤」直接用 P1 印出。</p>
   </header>
 
   <div class="grid">
@@ -105,15 +105,14 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <h2>3．標籤預覽</h2>
       <div class="preview"><img id="labelImg" alt="訂貨標籤預覽"></div>
       <div class="row">
-        <button class="primary" id="btnBle">藍牙直接列印</button>
-        <button id="btnPc">電腦列印（打印助手）</button>
+        <button class="primary" id="btnPc">列印標籤</button>
         <button id="btnShare">分享到標籤 App</button>
         <button id="btnDownload">下載圖片</button>
         <button id="btnCopyImg">複製圖片</button>
       </div>
       <div class="msg" id="outMsg"></div>
-      <p class="hint">Android 手機請用 Chrome 開（不要在 LINE 裡開）：按「藍牙直接列印」，第一次會跳出選擇視窗，選 P1。電腦（已安裝德佟打印助手／P1 驅動）：按「電腦列印」，會自動找 P1 印表機。<br>
-      iPhone 不支援網頁藍牙：請按「分享到標籤 App」選微打，或長按預覽圖 →「儲存圖片」再到微打從相簿選圖。</p>
+      <p class="hint">P1 用 USB 接在這台電腦（需已安裝德佟打印助手／P1 驅動），按「列印標籤」會自動找 P1 列印。<br>
+      快速鍵：貼上訊息後按 <b>Ctrl + Enter</b> 直接列印。</p>
     </section>
   </div>
 </div>
@@ -314,7 +313,6 @@ async function directPrint(mode, btn){
   }catch(e){ out("列印出錯："+(e.message||e)+"（"+env()+"）"); }
   finally{ btn.disabled=false; }
 }
-$("btnBle").onclick = e=>directPrint("ble", e.currentTarget);
 // ── 電腦列印（dtpweb 打印助手） ──
 let pcApi = null, pcPrinter = null;
 function pcCheck(){ return new Promise(res=>{
@@ -406,6 +404,7 @@ $("btnMsg").onclick = async ()=>{
   catch(e){ $("copyMsg").className="msg"; $("copyMsg").textContent="已放到上方訊息框，請手動複製。"; }
 };
 $("btnParse").onclick = fillFromMsg;
+document.addEventListener("keydown", e=>{ if (e.ctrlKey && e.key==="Enter"){ e.preventDefault(); fillFromMsg(); clearTimeout(drawTimer); draw(); setTimeout(()=>$("btnPc").click(), 50); } });
 // 點訊息框就全選，貼上時直接取代舊內容並自動產生標籤
 $("src").addEventListener("focus", e=>e.target.select());
 $("src").addEventListener("paste", ()=>{ $("fDate").value = today(); setTimeout(fillFromMsg,0); });
