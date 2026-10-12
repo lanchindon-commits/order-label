@@ -115,6 +115,10 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         </label>
         <button id="btnFind">搜尋印表機</button>
       </div>
+      <div class="row" id="manualRow" hidden>
+        <input id="fPrinterName" placeholder="輸入 Windows 裡的印表機名稱，例如：P1 FIXNSERVER" style="flex:1;min-width:0">
+        <button id="btnManual">使用這台</button>
+      </div>
       <div class="msg" id="outMsg"></div>
       <p class="hint">P1 可以接在這台電腦，或接在同一個網路的另一台電腦（例如 FIXNSERVER）；兩台都要裝德佟打印助手。按「搜尋印表機」選好一次，之後都會印到那台。<br>
       快速鍵：貼上訊息後按 <b>Ctrl + Enter</b> 直接列印。</p>
@@ -335,12 +339,20 @@ function saveTarget(d){ target = d ? {name:nm(d), ip:d.ip, hostname:d.hostname, 
 function fillPrinterSelect(list){
   const sel=$("fPrinter"); sel.innerHTML='<option value="">自動（先找本機 P1，找不到再找區網）</option>';
   list.forEach((d,i)=>{ const o=new Option(label(d), String(i)); sel.add(o); });
+  sel.add(new Option("✎ 清單裡沒有？手動輸入印表機名稱…","manual"));
   sel._list = list;
   if (target){ const i=list.findIndex(d=>nm(d)===target.name && (d.ip||"")===(target.ip||"")); if (i>=0) sel.value=String(i); else { sel.add(new Option(target.name+(target.hostname||target.ip?"（在 "+(target.hostname||target.ip)+"）":"")+"・上次使用","saved")); sel.value="saved"; } }
 }
-if (target) fillPrinterSelect([]);
+fillPrinterSelect([]);
+$("btnManual").onclick = ()=>{
+  const n=$("fPrinterName").value.trim(); if (!n){ out("請輸入印表機名稱。"); return; }
+  saveTarget({name:n}); pcPrinter=null; $("manualRow").hidden=true; fillPrinterSelect($("fPrinter")._list||[]);
+  out("之後都印到："+n+"（手動指定）", true);
+};
 $("fPrinter").addEventListener("change", e=>{
   const v=e.target.value; if (v==="saved") return;
+  $("manualRow").hidden = v!=="manual";
+  if (v==="manual"){ $("fPrinterName").focus(); return; }
   saveTarget(v==="" ? null : e.target._list[+v]); pcPrinter=null;
   out(v==="" ? "改回自動找印表機。" : "之後都印到："+label(e.target._list[+v]), true);
 });
