@@ -63,14 +63,15 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 @keyframes spin{to{transform:rotate(360deg)}}
 .olist{margin-top:12px;display:grid;gap:8px}
 .oi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center}
-.oi .t{font-weight:700;min-width:0;overflow-wrap:anywhere}
+.oi .t{font-weight:700;min-width:0;overflow-wrap:anywhere;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.oi .t .plate{font-size:17px}
 .oi .t small{font-weight:500;color:var(--muted)}
 .oi .s{font-size:13px;color:var(--muted);grid-column:1/-1;overflow-wrap:anywhere}
 .oi .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .oi .acts button{padding:6px 10px;font-size:13px}
-.st{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:700;margin-right:6px;background:var(--line);color:var(--ink)}
-.st.ordered{background:#fde7c7;color:#8a4b00}.st.arrived{background:#dbeafe;color:#1d4ed8}.st.notified{background:#e0e7ff;color:#3730a3}
-.st.booked{background:#dcf5ec;color:#12664f}.st.done{background:var(--line);color:var(--muted)}.st.cancelled{background:#fde8e7;color:#b42318}
+.st{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:92px;padding:4px 12px;border-radius:8px;font-size:15px;font-weight:900;background:var(--line);color:var(--ink);white-space:nowrap}
+.st.ordered{background:#f59e0b;color:#1a1200}.st.arrived{background:#3b82f6;color:#fff}.st.notified{background:#8b5cf6;color:#fff}
+.st.booked{background:#10b981;color:#04140d}.st.done{background:#6b7280;color:#fff}.st.cancelled{background:#ef4444;color:#fff}
 </style>
 </head>
 <body>
@@ -671,7 +672,7 @@ $("fDate").value = today();
 
 // ===== 訂貨清單：到貨通知 → 客人預約 → Teamup =====
 const HOOK_NOTIFY="https://hook.us2.make.com/tba6a5k26idqvf7gae9p36nc5tf1kk8r";
-const ST_TXT={ordered:"待到貨",arrived:"已到貨",notified:"已通知",booked:"已預約",done:"已完成",cancelled:"已取消"};
+const ST_TXT={ordered:"⏳ 待到貨",arrived:"📦 已到貨",notified:"📨 已通知",booked:"📅 已預約",done:"✔ 已完成",cancelled:"✖ 已取消"};
 let oFilter="open", oRows=[];
 function oMsg(t,ok){ const e=$("oMsg"); e.className="msg"+(ok?" ok":""); e.textContent=t; }
 const esc=t=>String(t==null?"":t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -697,7 +698,7 @@ function renderOrders(){
     if(st==="ordered"||st==="arrived") acts+='<button class="primary" data-a="notify" data-id="'+r.id+'">已到貨・通知客人</button>';
     if(st==="notified") acts+='<button data-a="notify" data-id="'+r.id+'">再通知一次</button>';
     if(st!=="done"&&st!=="cancelled") acts+='<button data-a="done" data-id="'+r.id+'">完成</button><button data-a="cancel" data-id="'+r.id+'">取消</button>';
-    return '<div class="oi"><div class="t"><span class="st '+st+'">'+(ST_TXT[st]||st)+'</span>'+esc(r.plate)+' <small>'+esc(r.part)+(r.customer_name?"｜"+esc(r.customer_name):"")+'</small></div><div class="acts">'+acts+'</div><div class="s">'+info.join("・")+'</div></div>';
+    return '<div class="oi"><div class="t"><span class="st '+st+'">'+(ST_TXT[st]||st)+'</span><span class="plate">'+esc(r.plate)+'</span><small>'+esc(r.part)+(r.customer_name?"｜"+esc(r.customer_name):"")+'</small></div><div class="acts">'+acts+'</div><div class="s">'+info.join("・")+'</div></div>';
   }).join("");
 }
 $("oFilter").addEventListener("click",e=>{
