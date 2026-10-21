@@ -244,13 +244,17 @@ function fillFromMsg(){
 
 // ── 畫標籤 ──
 function wrapText(ctx, text, maxW){
+  // 英數字（例：2200、x2）當成一個字，不從中間斷開；中文仍可逐字斷行
   const out=[]; let cur="";
-  const noStart = "、，。,.)）：:；;！!？?」』%";
-  for (const ch of text){
-    if (ctx.measureText(cur+ch).width > maxW && cur && !noStart.includes(ch)){ out.push(cur); cur = ch===" " ? "" : ch; }
-    else cur+=ch;
+  const noStart = "、，。,.)）：:；;！!？?」』%+";
+  const fits = t => ctx.measureText(t).width <= maxW;
+  const push = () => { if (cur) out.push(cur); cur=""; };
+  for (const tok of (text.match(/[A-Za-z0-9$.,\-]+|[\s\S]/gu) || [])){
+    if (fits(cur+tok) || noStart.includes(tok[0])){ cur += tok; continue; }
+    if (fits(tok)){ push(); cur = tok===" " ? "" : tok; continue; }
+    for (const ch of tok){ if (!fits(cur+ch) && cur) push(); cur += ch; }  // 單一字串太長才逐字斷
   }
-  if (cur) out.push(cur); return out.length?out:[""];
+  push(); return out.length?out:[""];
 }
 
 function layout(ctx, W, H, fs, rows, pfs){
@@ -305,6 +309,8 @@ function draw(){
     rows.push({label:"材料名稱：",value:$("fPart").value.trim(),inline:true,part:true});
   }
   rows.push({label:"價錢：",value:price ? "$"+price : "",inline:true,nowrap:true});
+  const pItems = ($("fPrice").value||"").replace(/,/g,"").match(/\d+/g) || [];
+  if (pItems.length > 1) rows.push({value:"（"+pItems.join("+")+"）",part:true});
 
   // 從大字開始縮，直到塞得進標籤
   // 1) 整體字級從大往下縮，但欄位字不低於 FLOOR（約 2.8mm，熱感紙還看得清楚）
