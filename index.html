@@ -220,7 +220,7 @@ function parseMsg(t){
     tech:  pick(/技師\s*\(?\s*([^)\n]+?)\s*\)/) || pick(/技師\s*[:\s]\s*(\S+)/),
     plate: pick(/愛車\s*:?\s*([A-Za-z0-9]+-[A-Za-z0-9]+)/) || pick(/\b([A-Z0-9]{2,4}-[A-Z0-9]{2,4})\b/i),
     part:  pick(/材料\s*\(\s*([^)\n]+)\)/) || pick(/材料(?:名稱)?\s*:?\s*([^\n]+)/),
-    price: pick(/價[錢格]\s*\(?\s*\$?\s*([\d,]+)/).replace(/,/g,""),
+    price: (pick(/價[錢格]\s*\(?\s*\$?\s*([^)\n]+)/).match(/\d[\d,]*/g)||[]).map(x=>x.replace(/,/g,"")).join("+"),
     name:  ""
   };
   // 第一行如果不是問候/欄位，就當客人名稱
@@ -291,7 +291,7 @@ function draw(){
   ctx.fillStyle="#fff"; ctx.fillRect(0,0,W,H);
   ctx.fillStyle="#000"; ctx.textBaseline="top";
 
-  const price = $("fPrice").value.trim();
+  const price = priceTotal();
   const rows = [];
   if ($("fShowName").checked && $("fName").value.trim()) rows.push({label:"客人：",value:$("fName").value.trim(),inline:true});
   rows.push({label:"預定日期：",value:$("fDate").value.trim(),inline:true,nowrap:true});
@@ -524,9 +524,14 @@ $("fMode").value = LS.get("printMode") || "station";
 $("fMode").addEventListener("change", ()=>{ LS.set("printMode",$("fMode").value); applyMode(); });
 applyMode();
 
+// 價錢可能是多項（例：2200+300+400+1700），標籤和資料庫用加總
+function priceTotal(){
+  const n = ($("fPrice").value||"").replace(/,/g,"").match(/\d+/g) || [];
+  return n.length ? String(n.reduce((a,b)=>a+Number(b),0)) : "";
+}
 function orderFields(){
   return { order_date:$("fDate").value.trim(), technician:$("fTech").value.trim(), plate:$("fPlate").value.trim(),
-           part:$("fPart").value.trim(), price:$("fPrice").value.trim(), customer_name:$("fName").value.trim(), raw_message:$("src").value };
+           part:$("fPart").value.trim(), price:priceTotal(), customer_name:$("fName").value.trim(), raw_message:$("src").value };
 }
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
