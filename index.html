@@ -90,6 +90,15 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
       <button id="btnStationTest">印測試標籤</button>
       <button id="btnStationOff">停止列印站</button>
     </div>
+    <div class="row">
+      <label class="check">濃度
+        <select id="fDark" style="width:auto"><option value="255">印表機預設</option><option value="5">5 正常</option><option value="8">8</option><option value="10">10 較濃</option><option value="12">12</option><option value="14">14 最濃</option></select></label>
+      <label class="check">速度
+        <select id="fSpeed" style="width:auto"><option value="255">印表機預設</option><option value="0">最慢</option><option value="1">較慢</option><option value="2">正常</option></select></label>
+      <label class="check">字體加粗
+        <select id="fBold" style="width:auto"><option value="0">不加粗</option><option value="1">加粗</option><option value="2">特粗</option></select></label>
+      <button id="btnPrinterProp">開啟印表機設定</button>
+    </div>
     <ol id="stLog"></ol>
   </section>
 
@@ -451,7 +460,44 @@ $("btnFind").onclick = async e=>{
     out(list.length ? "找到 "+list.length+" 台印表機"+(p1.length?"，其中 P1："+p1.map(label).join("、"):"，但沒有 P1")+"。請在「印表機」選單選一台。" : "沒有找到任何印表機。", !!p1.length);
   } finally { btn.disabled=false; }
 };
+// 列印濃度／速度／加粗：存在這台電腦（列印站）上
+function prtPrefs(){ const g=(k,d)=>{ const v=LS.get(k); return v===null||v===""? d : +v; }; return { dark:g("prtDark",12), speed:g("prtSpeed",0), bold:g("prtBold",1) }; }
+let prtApplied = "";
+function applyPrinterParams(api, dev){
+  const p = prtPrefs(), name = nm(dev), key = name+"|"+p.dark+"|"+p.speed;
+  if (prtApplied === key || (p.dark===255 && p.speed===255)) return;
+  try{
+    const remote = dev.ip && !api.isLocalPrinter(dev);
+    if (!api.openPrinter(remote ? {name, ip:dev.ip, port:dev.port} : name)) return;
+    if (p.dark !== 255) api.setPrintDarkness(p.dark);
+    if (p.speed !== 255) api.setPrintSpeed(p.speed);
+    let got=""; try{ got = "（印表機回報：濃度 "+api.getPrintDarkness()+"、速度 "+api.getPrintSpeed()+"）"; }catch(e){}
+    api.closePrinter();
+    prtApplied = key;
+    if (typeof stLog==="function" && stOn) stLog("已設定 "+name+" 濃度 "+p.dark+"、速度 "+p.speed+got, true);
+  }catch(e){}
+}
+// 把黑色筆畫往外擴 px 點，熱感紙印出來字會比較粗、比較黑
+function thicken(dataUrl, px){
+  return new Promise(res=>{
+    if (!px) return res(dataUrl);
+    const im=new Image(); im.onload=()=>{
+      const c=document.createElement("canvas"); c.width=im.width; c.height=im.height;
+      const x=c.getContext("2d"); x.fillStyle="#fff"; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0);
+      const d=x.getImageData(0,0,c.width,c.height), a=d.data, W=c.width, H=c.height;
+      let blk=new Uint8Array(W*H); for(let i=0;i<W*H;i++) blk[i]=(a[i*4]*0.3+a[i*4+1]*0.59+a[i*4+2]*0.11)<170?1:0;
+      // 加粗：筆畫往右多 1 點；特粗：再往下多 1 點（不往四周擴，避免中文糊成一團）
+      const n=blk.slice();
+      for(let y=0;y<H;y++) for(let xx=0;xx<W;xx++){ const i=y*W+xx; if(blk[i]) continue;
+        if((xx>0&&blk[i-1]) || (px>1&&y>0&&blk[i-W])) n[i]=1; }
+      blk=n;
+      for(let i=0;i<W*H;i++){ const v=blk[i]?0:255; a[i*4]=a[i*4+1]=a[i*4+2]=v; a[i*4+3]=255; }
+      x.putImageData(d,0,0); res(c.toDataURL("image/png"));
+    }; im.onerror=()=>res(dataUrl); im.src=dataUrl;
+  });
+}
 function sendTo(api, dev, data, w, h){
+  applyPrinterParams(api, dev);
   const [pw,ph] = data ? [w,h] : printSize();
   const opt = { data: data || $("pcv").toDataURL("image/png"), printWidth: pw, printHeight: ph, printerName: nm(dev) };
   if (dev.ip && !api.isLocalPrinter(dev)) opt.printer = dev;   // 區網印表機要帶上所在電腦的 IP
@@ -588,7 +634,7 @@ async function stationRun(){
       for (const j of jobs){
         if (!api){ await rpc("ol_done",{p_key:key,p_id:j.id,p_ok:false,p_error:"列印站電腦找不到打印助手"}); stLog("#"+j.id+" 失敗：找不到打印助手"); continue; }
         const dev = await stationPrinter(api);
-        const ok = sendTo(api, dev, j.label_png, +j.label_w_mm, +j.label_h_mm);
+        const ok = sendTo(api, dev, await thicken(j.label_png, prtPrefs().bold), +j.label_w_mm, +j.label_h_mm);
         if (ok) pcPrinter = dev;
         await rpc("ol_done",{p_key:key,p_id:j.id,p_ok:!!ok,p_error: ok?null:("送不到 "+nm(dev))});
         stLog("#"+j.id+" "+(j.plate||"")+(ok?" 已印出 → "+nm(dev):" 失敗：送不到 "+nm(dev)), ok);
@@ -623,8 +669,19 @@ $("btnStationTest").onclick = async ()=>{
   await loadLib("pc"); const api = window.dtpweb && await pcCheck();
   if (!api){ stLog("找不到打印助手，請在這台安裝德佟打印助手"); return; }
   const dev = await stationPrinter(api); const [pw,ph]=printSize();
-  const ok = sendTo(api, dev, $("pcv").toDataURL("image/png"), pw, ph);
+  const ok = sendTo(api, dev, await thicken($("pcv").toDataURL("image/png"), prtPrefs().bold), pw, ph);
   stLog(ok ? "測試標籤已送到 "+nm(dev) : "測試失敗：送不到 "+nm(dev), ok);
+};
+[["fDark","prtDark","dark"],["fSpeed","prtSpeed","speed"],["fBold","prtBold","bold"]].forEach(([id,k,f])=>{
+  $(id).value = String(prtPrefs()[f]);
+  $(id).addEventListener("change",()=>{ LS.set(k,$(id).value); prtApplied=""; stLog("列印設定已更新，下一張開始套用", true); });
+});
+$("btnPrinterProp").onclick = async ()=>{
+  await loadLib("pc"); const api = window.dtpweb && await pcCheck();
+  if (!api){ stLog("找不到打印助手"); return; }
+  const dev = await stationPrinter(api);
+  try{ api.showProperty({printerName:nm(dev), showDocument:true}); stLog("已開啟 "+nm(dev)+" 的列印喜好設定（視窗可能在網頁後面）", true); }
+  catch(e){ stLog("無法開啟印表機設定："+e.message); }
 };
 if (LS.get("stationOn")==="1") setTimeout(stationStart, 300);
 
