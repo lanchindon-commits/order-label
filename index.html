@@ -126,24 +126,12 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
         <label>價錢<input id="fPrice" inputmode="numeric"></label>
         <label class="full">材料名稱<input id="fPart"></label>
         <label>客人名稱<input id="fName"></label>
-        <label>標籤尺寸
-          <select id="fSize">
-            <option value="30x40">30 × 40 mm（直式）</option>
-            <option value="40x30">40 × 30 mm</option>
-            <option value="50x30">50 × 30 mm</option>
-            <option value="50x40">50 × 40 mm</option>
-            <option value="50x50">50 × 50 mm</option>
-          </select>
-        </label>
+        <!-- 標籤固定 30×40mm、列印固定旋轉 90° -->
+        <select id="fSize" hidden><option value="30x40">30 × 40 mm</option></select>
+        <select id="fRotate" hidden><option value="90">旋轉 90°</option></select>
       </div>
       <div class="row">
         <label class="check"><input type="checkbox" id="fShowName">標籤上印客人名稱</label>
-        <label class="check">列印方向
-          <select id="fRotate" style="width:auto">
-            <option value="0">不旋轉</option>
-            <option value="90">旋轉 90°</option>
-          </select>
-        </label>
       </div>
       <div class="row">
         <button id="btnMsg">反過來：用上面欄位產生 LINE 訊息並複製</button>
@@ -728,12 +716,10 @@ let drawTimer = null;
 function drawSoon(){ clearTimeout(drawTimer); drawTimer = setTimeout(draw, 150); }
 ["fDate","fTech","fPlate","fPrice","fPart","fName"].forEach(id=>$(id).addEventListener("input",drawSoon));
 ["fSize","fShowName","fRotate"].forEach(id=>$(id).addEventListener("change",draw));
-try{ const r=localStorage.getItem("labelRotate2"); if(r) $("fRotate").value=r; }catch(e){}
-$("fRotate").addEventListener("change",()=>{ try{localStorage.setItem("labelRotate2",$("fRotate").value);}catch(e){} });
+
 
 // 記住上次選的尺寸
-try{ const s=localStorage.getItem("labelSize2"); if(s) $("fSize").value=s; }catch(e){}
-$("fSize").addEventListener("change",()=>{ try{localStorage.setItem("labelSize2",$("fSize").value);}catch(e){} });
+
 
 $("fDate").value = today();
 (document.fonts ? document.fonts.load('900 40px "Noto Sans TC"').catch(()=>{}) : Promise.resolve()).then(()=>{ draw(); $("src").focus(); });
